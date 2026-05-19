@@ -1,7 +1,7 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.jessiejanie/skim402",
-  "description": "Clean web reader for AI agents. POST a URL, get back agent-ready markdown plus structured metadata. $0.002 per call in USDC on Base via x402 — no signup, no API keys.",
+  "description": "Clean web reader for AI agents. Pays $0.002/call in USDC on Base via x402. No API keys.",
   "repository": {
     "url": "https://github.com/JessieJanie/skim402.git",
     "source": "github"
