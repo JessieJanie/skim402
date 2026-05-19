@@ -1,0 +1,58 @@
+{
+  "name": "skim-mcp",
+  "version": "0.1.1",
+  "description": "MCP server for Skim — clean web reader for AI agents. Pays $0.002 per call in USDC over x402. No signup, no API keys.",
+  "type": "module",
+  "bin": {
+    "skim-mcp": "dist/index.js"
+  },
+  "main": "dist/index.js",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json && node -e \"require('fs').chmodSync('dist/index.js', 0o755)\"",
+    "typecheck": "tsc --noEmit",
+    "dev": "tsx src/index.ts",
+    "prepublishOnly": "pnpm build"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "viem": "^2.21.0",
+    "x402-fetch": "^0.6.0",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "tsx": "catalog:",
+    "typescript": "^5.9.0"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "x402",
+    "skim",
+    "ai",
+    "agent",
+    "reader",
+    "markdown",
+    "web-scraping",
+    "claude",
+    "cursor"
+  ],
+  "homepage": "https://skim402.com",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/JessieJanie/skim402.git"
+  },
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  }
+}
