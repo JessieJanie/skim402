@@ -1,0 +1,35 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.jessiejanie/skim402",
+  "description": "Clean web reader for AI agents. POST a URL, get back agent-ready markdown plus structured metadata. $0.002 per call in USDC on Base via x402 — no signup, no API keys.",
+  "repository": {
+    "url": "https://github.com/JessieJanie/skim402.git",
+    "source": "github"
+  },
+  "version": "0.1.1",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "skim-mcp",
+      "version": "0.1.1",
+      "runtimeHint": "npx",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "SKIM_WALLET_PRIVATE_KEY",
+          "description": "Base-network wallet private key (0x-prefixed, 64 hex chars). Fund the wallet with a small amount of USDC on Base to pay $0.002 per call. Create one at https://app.coinbase.com or any Base-compatible wallet.",
+          "isRequired": true,
+          "isSecret": true
+        },
+        {
+          "name": "SKIM_MAX_PRICE_USD",
+          "description": "Optional cap on per-call price in USD (default 0.01). Requests that would cost more than this are rejected without payment.",
+          "isRequired": false,
+          "isSecret": false
+        }
+      ]
+    }
+  ]
+}
