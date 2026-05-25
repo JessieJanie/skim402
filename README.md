@@ -1,27 +1,22 @@
 # skim-mcp
 
-MCP (Model Context Protocol) server for [Skim](https://skim402.com) — clean web
-reader for AI agents. Pays **$0.002 per call in USDC on Base** over the
-[x402](https://x402.org) protocol. No signup. No API keys. No monthly bills.
+**Give your AI agent the ability to read any URL — clean Markdown, no ads, no nav, no boilerplate. Pays itself per call. No signup, no API key.**
 
-Give your agent the ability to read any URL and get back clean, agent-ready
-Markdown (no nav, no ads, no boilerplate) plus structured metadata (title,
-byline, published date, language, excerpt).
+[![npm version](https://img.shields.io/npm/v/skim-mcp.svg)](https://www.npmjs.com/package/skim-mcp)
+[![MCP Registry](https://img.shields.io/badge/MCP-Registry-blue)](https://registry.modelcontextprotocol.io/v0/servers?search=skim402)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-## What you need
+`skim-mcp` is the official Model Context Protocol server for [Skim](https://skim402.com) — the canonical [x402](https://x402.org) clean reader API. It exposes one tool, `read_url`, that your agent can call to fetch any web page as agent-ready Markdown plus structured metadata (title, byline, published date, language, excerpt). Each call costs **$0.002 in USDC on Base**, paid automatically by your local wallet over HTTP 402.
 
-1. **Node.js 18+**
-2. A **Base wallet private key** with a small amount of **USDC** in it. A dollar
-   funds ~500 reads. Use a fresh wallet — not your personal one.
+> _A 30-second demo GIF coming here soon._
 
-> Don't have one? Create a key with `cast wallet new` (Foundry) or any EVM
-> wallet, then send USDC to it on Base mainnet from Coinbase, an exchange, or
-> another wallet.
+---
 
-## Install in Claude Desktop
+## Quickstart (60 seconds)
 
-Edit `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS)
-or `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
+### 1. Add to your MCP-compatible client
+
+**Claude Desktop** — edit `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
 
 ```json
 {
@@ -37,43 +32,45 @@ or `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
 }
 ```
 
-Restart Claude Desktop. You'll see a new `read_url` tool. Ask Claude to read
-any article and it'll fetch it through Skim and pay automatically.
+**Cursor** — edit `~/.cursor/mcp.json` (or **Settings → MCP**) with the same JSON block.
 
-## Install in Cursor
+**Cline, Continue, Zed, or any other MCP client** — same shape; the binary is `npx skim-mcp` with one env var.
 
-Edit `~/.cursor/mcp.json` (or the in-app **Settings → MCP** panel):
+### 2. Fund a Base wallet with $1 of USDC
 
-```json
-{
-  "mcpServers": {
-    "skim": {
-      "command": "npx",
-      "args": ["-y", "skim-mcp"],
-      "env": {
-        "SKIM_WALLET_PRIVATE_KEY": "0xYOUR_BASE_WALLET_PRIVATE_KEY"
-      }
-    }
-  }
-}
+A dollar funds roughly 500 reads. Full step-by-step (with screenshots, for non-crypto-native devs): **<https://skim402.com/wallet>**.
+
+> **Use a fresh wallet, not your personal one.** This wallet's private key lives in a plaintext config file on your machine — treat it like a hot-wallet for paying $0.002 tolls, not a savings account.
+
+### 3. Restart your client and ask it to read something
+
+```
+Claude, read https://en.wikipedia.org/wiki/HTTP_402 and summarize it.
 ```
 
-## Install in Cline / Continue / Zed
+The agent will call `read_url`, your local wallet will sign an EIP-3009 USDC authorization for $0.002, Skim returns clean Markdown, and Claude summarizes. You'll see the payment receipt in your wallet's transaction history on [BaseScan](https://basescan.org/).
 
-All MCP-compatible clients use the same shape. Run the binary as:
+---
+
+## Try it without an agent
+
+Skeptical? Test the upstream endpoint directly — it'll return a 402 challenge so you can see the protocol in action:
 
 ```bash
-npx skim-mcp
+curl -i -X POST https://skim402.com/api/v1/read \
+  -H 'content-type: application/json' \
+  -d '{"url":"https://en.wikipedia.org/wiki/HTTP_402"}'
 ```
 
-with the same `SKIM_WALLET_PRIVATE_KEY` env var.
+You'll get back `HTTP/1.1 402 Payment Required` with the x402 challenge in the response body. To then *pay* the challenge from a script (not an agent), see [x402-fetch](https://www.npmjs.com/package/x402-fetch).
 
-## Tools
+---
+
+## The tool
 
 ### `read_url`
 
-Reads any URL and returns clean Markdown plus a YAML frontmatter block with
-metadata.
+Reads any URL and returns clean Markdown with a YAML frontmatter block.
 
 **Input:**
 
@@ -81,7 +78,7 @@ metadata.
 { "url": "https://example.com/article" }
 ```
 
-**Output (text):**
+**Output:**
 
 ```
 ---
@@ -97,40 +94,81 @@ excerpt: A short summary...
 The cleaned article body in Markdown...
 ```
 
-## Environment variables
+That's it. One tool, one input, one shape of output. Designed to drop into any agent's tool-calling loop with zero ceremony.
 
-| Variable                   | Required | Default                | Notes                                                                                                                          |
-| -------------------------- | -------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `SKIM_WALLET_PRIVATE_KEY`  | **yes**  | —                      | Hex private key for the Base wallet that pays for reads. With or without `0x` prefix.                                          |
-| `SKIM_MAX_PRICE_USD`       | no       | `0.01`                 | Maximum USD per call. Caps how much the wallet will sign for in a single read. Skim is currently $0.002/call, well under this. |
-| `SKIM_API_URL`             | no       | `https://skim402.com`  | Override the API base URL. Mostly for development.                                                                             |
+---
+
+## Configuration
+
+| Variable                  | Required | Default               | Notes                                                                                                                                                                              |
+| ------------------------- | -------- | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SKIM_WALLET_PRIVATE_KEY` | **yes**  | —                     | Hex private key for the Base wallet that pays for reads. With or without `0x` prefix. Use a dedicated wallet — never your personal one.                                            |
+| `SKIM_MAX_PRICE_USD`      | no       | `0.01`                | Hard cap on per-call price in USD. The wallet refuses to sign for anything above this. Skim is currently `$0.002`/call, well under the default cap — leave it alone unless tuning. |
+| `SKIM_API_URL`            | no       | `https://skim402.com` | Override the API base URL. For self-hosting or local development.                                                                                                                  |
+
+---
+
+## How it actually works
+
+```
+your agent ──► skim-mcp ──► POST https://skim402.com/api/v1/read
+                  ▲                       │
+                  │                       ▼
+                  │              402 Payment Required
+                  │                  (x402 challenge)
+                  │                       │
+                  ▼                       │
+   x402-fetch signs EIP-3009 ◄────────────┘
+   USDC transfer authorization
+                  │
+                  ▼
+        retry POST with X-PAYMENT header
+                  │
+                  ▼
+   Skim verifies + settles via Coinbase CDP facilitator
+                  │
+                  ▼
+        200 OK + clean Markdown
+```
+
+End-to-end latency is typically **1.5–2 seconds** including settlement. Your private key never leaves your machine — it only signs authorizations locally.
+
+---
 
 ## Security
 
-- Use a **dedicated wallet**, not your personal one. Fund it with only as much
-  USDC as you're willing to spend.
-- The private key never leaves your machine. It's only used locally to sign
-  EIP-3009 payment authorizations consumed by the Skim API.
-- Sweep the receive side periodically if you're running Skim yourself.
+- **Dedicated wallet, always.** Fund it with only as much USDC as you're willing to spend in a runaway loop. The `SKIM_MAX_PRICE_USD` cap catches accidental price escalations on the server side.
+- **Plaintext config caveat.** MCP clients read the private key from a JSON file on disk in plaintext. Anyone with read access to your home directory can drain the wallet. This is a property of every MCP server that needs credentials — keep the wallet small.
+- **No outbound telemetry from this package.** `skim-mcp` only talks to `skim402.com` (or whatever you set as `SKIM_API_URL`). No analytics, no error reporting, no phone-home.
 
-## How it works
+---
 
-1. The MCP server receives a `read_url` call from your AI agent.
-2. It POSTs to `https://skim402.com/api/v1/read`.
-3. The server replies `402 Payment Required` with x402 payment details.
-4. [`x402-fetch`](https://www.npmjs.com/package/x402-fetch) signs an EIP-3009
-   USDC transfer authorization using your wallet, attaches it as the
-   `X-PAYMENT` header, and retries.
-5. Skim verifies + settles via the Coinbase CDP facilitator and returns the
-   cleaned content.
+## Troubleshooting
 
-End-to-end latency is typically <2 seconds.
+**"No tool named `read_url` shows up in Claude/Cursor."**
+Restart the client fully (quit, don't just reload the window). MCP servers are spawned at client startup. If still missing, run `npx skim-mcp` directly in a terminal — if you get a stack trace, it's likely Node < 18.
+
+**"402 Payment Required loops forever."**
+Your wallet is out of USDC on Base mainnet (or you set `SKIM_API_URL` to a server expecting payment on a different network). Check the balance on [BaseScan](https://basescan.org/), top up if needed.
+
+**"insufficient funds for gas"**
+Counter-intuitive but: x402 USDC transfers are gasless from your wallet's perspective (the facilitator pays gas, you only sign the authorization). If you see this error, you almost certainly funded the wrong wallet or the wrong network — verify the address in your config matches the one holding the USDC.
+
+**"USDC is on Ethereum, not Base."**
+This is the most common funding mistake. USDC on Ethereum mainnet does not work — Skim only accepts USDC on Base. See <https://skim402.com/wallet> for the bridging walkthrough.
+
+---
 
 ## Links
 
-- Skim — https://skim402.com
-- x402 protocol — https://x402.org
-- Model Context Protocol — https://modelcontextprotocol.io
+- **Skim website** — <https://skim402.com>
+- **Wallet setup guide** — <https://skim402.com/wallet>
+- **API docs** — <https://skim402.com/docs>
+- **x402 protocol** — <https://x402.org>
+- **Model Context Protocol** — <https://modelcontextprotocol.io>
+- **GitHub** — <https://github.com/JessieJanie/skim402>
+
+---
 
 ## License
 
