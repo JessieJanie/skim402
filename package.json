@@ -1,6 +1,7 @@
 {
   "name": "skim-mcp",
-  "version": "0.1.1",
+  "version": "0.1.4",
+  "mcpName": "io.github.JessieJanie/skim402",
   "description": "MCP server for Skim — clean web reader for AI agents. Pays $0.002 per call in USDC over x402. No signup, no API keys.",
   "type": "module",
   "bin": {
