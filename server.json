@@ -6,12 +6,12 @@
     "url": "https://github.com/JessieJanie/skim402.git",
     "source": "github"
   },
-  "version": "0.1.3",
+  "version": "0.1.4",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "skim-mcp",
-      "version": "0.1.3",
+      "version": "0.1.4",
       "runtimeHint": "npx",
       "transport": {
         "type": "stdio"
