@@ -1,0 +1,31 @@
+# Smithery configuration for skim-mcp
+# https://smithery.ai/docs
+startCommand:
+  type: stdio
+  configSchema:
+    type: object
+    required:
+      - SKIM_WALLET_PRIVATE_KEY
+    properties:
+      SKIM_WALLET_PRIVATE_KEY:
+        type: string
+        title: Base wallet private key
+        description: >-
+          0x-prefixed 64-hex-char private key for a DEDICATED Base wallet funded
+          with a small amount of USDC. Pays $0.002 per read over x402. Never use
+          a personal wallet — the key is stored by your MCP client in plaintext.
+      SKIM_MAX_PRICE_USD:
+        type: string
+        title: Max price per call (USD)
+        description: >-
+          Optional hard cap on per-call price in USD. Default 0.01. Requests that
+          would cost more than this are refused before any payment is signed.
+  commandFunction: |-
+    (config) => ({
+      command: 'npx',
+      args: ['-y', 'skim-mcp'],
+      env: Object.assign(
+        { SKIM_WALLET_PRIVATE_KEY: config.SKIM_WALLET_PRIVATE_KEY },
+        config.SKIM_MAX_PRICE_USD ? { SKIM_MAX_PRICE_USD: config.SKIM_MAX_PRICE_USD } : {}
+      )
+    })
