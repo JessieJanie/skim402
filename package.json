@@ -17,7 +17,8 @@
     "build": "tsc -p tsconfig.build.json && node -e \"require('fs').chmodSync('dist/index.js', 0o755)\"",
     "typecheck": "tsc --noEmit",
     "dev": "tsx src/index.ts",
-    "prepublishOnly": "pnpm build"
+    "prepublishOnly": "pnpm build",
+    "postinstall": "command -v tsx >/dev/null 2>&1 || npm install -g tsx@4.21.0"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
