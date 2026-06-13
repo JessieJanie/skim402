@@ -2,7 +2,7 @@
   "name": "skim-mcp",
   "version": "0.1.5",
   "mcpName": "io.github.JessieJanie/skim402",
-  "description": "MCP server for Skim — clean web reader for AI agents. Pays $0.002 per call in USDC over x402. No signup, no API keys.",
+  "description": "MCP server for Skim \u2014 clean web reader for AI agents. Pays $0.002 per call in USDC over x402. No signup, no API keys.",
   "type": "module",
   "bin": {
     "skim-mcp": "dist/index.js"
@@ -23,11 +23,11 @@
     "@modelcontextprotocol/sdk": "^1.0.0",
     "viem": "^2.21.0",
     "x402-fetch": "^0.6.0",
-    "zod": "catalog:"
+    "zod": "^3.25.76"
   },
   "devDependencies": {
-    "@types/node": "catalog:",
-    "tsx": "catalog:",
+    "@types/node": "^25.3.3",
+    "tsx": "^4.21.0",
     "typescript": "^5.9.0"
   },
   "publishConfig": {
