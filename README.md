@@ -8,6 +8,8 @@
 
 `skim-mcp` is the official Model Context Protocol server for [Skim](https://skim402.com) — the canonical [x402](https://x402.org) clean reader API. It exposes one tool, `read_url`, that your agent can call to fetch any web page as agent-ready Markdown plus structured metadata (title, byline, published date, language, excerpt). Each call costs **$0.002 in USDC on Base**, paid automatically by your local wallet over HTTP 402.
 
+> **See it before you wire it:** [try Skim free in your browser](https://freeskims.skim402.com) — 10 free skims a day, no wallet, no signup. Paste a URL, see exactly what your agent gets back.
+
 > _A 30-second demo GIF coming here soon._
 
 ---
