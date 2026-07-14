@@ -5,6 +5,7 @@
 [![npm version](https://img.shields.io/npm/v/skim-mcp.svg)](https://www.npmjs.com/package/skim-mcp)
 [![MCP Registry](https://img.shields.io/badge/MCP-Registry-blue)](https://registry.modelcontextprotocol.io/v0/servers?search=skim402)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Skim on x402-list](https://x402-list.com/badge/skim.svg?data=uptime)](https://x402-list.com/services/skim?utm_source=badge&utm_medium=referral&utm_campaign=embed)
 
 `skim-mcp` is the official Model Context Protocol server for [Skim](https://skim402.com) — the canonical [x402](https://x402.org) clean reader API. It exposes one tool, `read_url`, that your agent can call to fetch any web page as agent-ready Markdown plus structured metadata (title, byline, published date, language, excerpt). Each call costs **$0.002 in USDC on Base**, paid automatically by your local wallet over HTTP 402.
 
