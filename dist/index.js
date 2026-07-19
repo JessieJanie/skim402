@@ -7,6 +7,10 @@ import { z } from "zod";
 const BASE_URL = (process.env.SKIM_API_URL ?? "https://skim402.com").replace(/\/+$/, "");
 const PRIVATE_KEY = process.env.SKIM_WALLET_PRIVATE_KEY;
 const MAX_PRICE_USD = process.env.SKIM_MAX_PRICE_USD ?? "0.01";
+const TIMEOUT_MS = (() => {
+    const parsed = Number(process.env.SKIM_TIMEOUT_MS ?? "90000");
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 90_000;
+})();
 let payFetch = fetch;
 let walletAddress = null;
 if (PRIVATE_KEY) {
@@ -23,7 +27,7 @@ if (PRIVATE_KEY) {
 }
 const server = new McpServer({
     name: "skim-mcp",
-    version: "0.1.5",
+    version: "0.1.6",
 });
 server.tool("read_url", "Fetch any URL and return clean, agent-ready Markdown via Skim (skim402.com). Strips nav, ads, and boilerplate; preserves the article body plus structured metadata (title, byline, published date, language, excerpt). Pays $0.002 per call in USDC on Base over the x402 protocol — no API keys, no signup. Use this whenever you need to read web content: articles, docs, blog posts, GitHub READMEs, research papers, etc.", {
     url: z
@@ -44,11 +48,32 @@ server.tool("read_url", "Fetch any URL and return clean, agent-ready Markdown vi
     }
     let res;
     try {
-        res = await payFetch(`${BASE_URL}/api/v1/read`, {
+        // Two layers of hang protection:
+        // 1. AbortSignal.timeout aborts the underlying HTTP requests (both the
+        //    initial 402 handshake and the paid retry — x402-fetch reuses init).
+        // 2. Promise.race is a hard watchdog for anything inside the payment
+        //    client that stalls without honoring the abort signal (e.g. a hung
+        //    RPC or signing step), so a single bad call can never freeze the
+        //    whole process.
+        const attempt = payFetch(`${BASE_URL}/api/v1/read`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ url, mode: "basic" }),
+            signal: AbortSignal.timeout(TIMEOUT_MS),
         });
+        let watchdog;
+        const deadline = new Promise((_, reject) => {
+            watchdog = setTimeout(() => reject(new Error(`timed out after ${TIMEOUT_MS}ms (SKIM_TIMEOUT_MS) — the request or payment client stalled`)), TIMEOUT_MS + 5_000);
+        });
+        try {
+            res = await Promise.race([attempt, deadline]);
+        }
+        finally {
+            clearTimeout(watchdog);
+            // If the watchdog won, make sure the losing fetch promise can't
+            // surface an unhandled rejection later.
+            attempt.catch(() => { });
+        }
     }
     catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
@@ -57,7 +82,7 @@ server.tool("read_url", "Fetch any URL and return clean, agent-ready Markdown vi
             content: [
                 {
                     type: "text",
-                    text: `Skim request failed: ${msg}. Common causes: wallet has no USDC on Base, or the price exceeds SKIM_MAX_PRICE_USD (${MAX_PRICE_USD}).`,
+                    text: `Skim request failed: ${msg}. Common causes: wallet has no USDC on Base, the price exceeds SKIM_MAX_PRICE_USD (${MAX_PRICE_USD}), or a stalled network/payment connection (the call was aborted after ${TIMEOUT_MS}ms; retry is safe — you are not charged for unsettled calls).`,
                 },
             ],
         };
