@@ -5,7 +5,6 @@
 [![npm version](https://img.shields.io/npm/v/skim-mcp.svg)](https://www.npmjs.com/package/skim-mcp)
 [![MCP Registry](https://img.shields.io/badge/MCP-Registry-blue)](https://registry.modelcontextprotocol.io/v0/servers?search=skim402)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Skim on x402-list](https://x402-list.com/badge/skim.svg?data=uptime)](https://x402-list.com/services/skim?utm_source=badge&utm_medium=referral&utm_campaign=embed)
 
 `skim-mcp` is the official Model Context Protocol server for [Skim](https://skim402.com) — the canonical [x402](https://x402.org) clean reader API. It exposes one tool, `read_url`, that your agent can call to fetch any web page as agent-ready Markdown plus structured metadata (title, byline, published date, language, excerpt). Each call costs **$0.002 in USDC on Base**, paid automatically by your local wallet over HTTP 402.
 
@@ -108,6 +107,7 @@ That's it. One tool, one input, one shape of output. Designed to drop into any a
 | `SKIM_WALLET_PRIVATE_KEY` | **yes**  | —                     | Hex private key for the Base wallet that pays for reads. With or without `0x` prefix. Use a dedicated wallet — never your personal one.                                            |
 | `SKIM_MAX_PRICE_USD`      | no       | `0.01`                | Hard cap on per-call price in USD. The wallet refuses to sign for anything above this. Skim is currently `$0.002`/call, well under the default cap — leave it alone unless tuning. |
 | `SKIM_API_URL`            | no       | `https://skim402.com` | Override the API base URL. For self-hosting or local development.                                                                                                                  |
+| `SKIM_TIMEOUT_MS`         | no       | `90000`               | Hard deadline per call in milliseconds. Aborts stalled requests or payment steps so a single bad call can never hang your agent. Unsettled calls are never charged, so retry is safe. |
 
 ---
 
