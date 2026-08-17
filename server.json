@@ -1,7 +1,7 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.JessieJanie/skim402",
-  "description": "Clean web reader for AI agents. Free remote read tier, optional x402 pay-per-call. No API keys.",
+  "description": "Clean web reader for AI agents. Card plan (API key) or x402 wallet pay-per-call — free tier.",
   "repository": {
     "url": "https://github.com/JessieJanie/skim402.git",
     "source": "github"
@@ -15,7 +15,7 @@
       "headers": [
         {
           "name": "X-Skim-Wallet-Key",
-          "description": "Optional. Without it, skim_read works on a shared free tier — no signup, no key. Add a Base wallet private key (use a fresh, low-balance agent wallet) to unlock paid tools (skim_extract, skim_signals) via per-call x402 USDC payments at fixed prices ($0.002/$0.005/$0.015). Used per-request only, never stored. Card-payment alternative: https://apify.com/jessiejanie/skim-clean-reader",
+          "description": "Optional. Without it, skim_read works on the shared free tier. To pay per call via x402 wallet: add a Base wallet private key (fresh, low-balance agent wallet) — unlocks paid tools at $0.002/$0.005/$0.015. Card plan alternative (API key): https://skim402.com/pricing",
           "isRequired": false,
           "isSecret": true
         }
