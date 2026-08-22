@@ -10,7 +10,7 @@
 
 > **See it before you wire it:** [try Skim free in your browser](https://freeskims.skim402.com) — 10 free skims a day, no wallet, no signup. Paste a URL, see exactly what your agent gets back.
 
-> _A 30-second demo GIF coming here soon._
+![Skim in action — one URL in, clean Markdown out](https://raw.githubusercontent.com/JessieJanie/skim402/main/demo.gif)
 
 ---
 
