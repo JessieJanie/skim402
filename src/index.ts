@@ -1,195 +1,487 @@
-import { createTool } from "@mastra/core/tools";
+#!/usr/bin/env node
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { privateKeyToAccount } from "viem/accounts";
 import { wrapFetchWithPayment } from "x402-fetch";
 import { z } from "zod";
 
-export interface SkimReaderToolOptions {
-  /**
-   * Card-plan API key (sk402_...). Defaults to the SKIM_API_KEY environment
-   * variable. Get a free key (1,000 reads/month) at skim402.com/pricing.
-   * Takes priority over walletPrivateKey when both are set.
-   */
-  apiKey?: string;
-  /**
-   * Hex private key of a Base wallet funded with USDC (with or without 0x
-   * prefix). Defaults to the SKIM_WALLET_PRIVATE_KEY environment variable.
-   * Pay-per-call via x402 at $0.002/read. Ignored when apiKey is set.
-   */
-  walletPrivateKey?: string;
-  /** Base URL of the Skim API. Defaults to SKIM_API_URL or https://skim402.com */
-  apiUrl?: string;
-  /**
-   * Maximum price in USD you allow per call (wallet lane only). Defaults to
-   * SKIM_MAX_PRICE_USD or "0.01".
-   */
-  maxPriceUsd?: string | number;
-  /** Request timeout in milliseconds. Defaults to SKIM_TIMEOUT_MS or 90000. */
-  timeoutMs?: number;
+const VERSION = "0.1.7";
+const BASE_URL = (process.env.SKIM_API_URL ?? "https://skim402.com").replace(
+  /\/+$/,
+  "",
+);
+const API_KEY = process.env.SKIM_API_KEY ?? "";
+const PRIVATE_KEY = process.env.SKIM_WALLET_PRIVATE_KEY ?? "";
+const MAX_PRICE_USD = process.env.SKIM_MAX_PRICE_USD ?? "0.01";
+const TIMEOUT_MS = (() => {
+  const parsed = Number(process.env.SKIM_TIMEOUT_MS ?? "90000");
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 90_000;
+})();
+
+const cardLane = API_KEY.length > 0;
+let payFetch: typeof fetch = fetch;
+let walletAddress: string | null = null;
+
+if (cardLane) {
+  const key = API_KEY;
+  payFetch = (input, init) =>
+    fetch(input, {
+      ...init,
+      headers: {
+        ...(init?.headers ?? {}),
+        Authorization: `Bearer ${key}`,
+      },
+    });
+} else if (PRIVATE_KEY) {
+  const normalized = PRIVATE_KEY.startsWith("0x")
+    ? PRIVATE_KEY.slice(2)
+    : PRIVATE_KEY;
+  if (!/^[0-9a-fA-F]{64}$/.test(normalized)) {
+    process.stderr.write(
+      "skim-mcp: SKIM_WALLET_PRIVATE_KEY must be a 64-character hex string (with or without 0x prefix). Refusing to start.\n",
+    );
+    process.exit(1);
+  }
+  const account = privateKeyToAccount(`0x${normalized}` as `0x${string}`);
+  walletAddress = account.address;
+  const maxPrice = Number(MAX_PRICE_USD);
+  if (!Number.isFinite(maxPrice) || maxPrice <= 0) {
+    process.stderr.write(
+      "skim-mcp: SKIM_MAX_PRICE_USD must be a positive number, e.g. 0.01.\n",
+    );
+    process.exit(1);
+  }
+  payFetch = wrapFetchWithPayment(
+    fetch,
+    account,
+    BigInt(Math.round(maxPrice * 1_000_000)),
+  ) as unknown as typeof fetch;
 }
 
-const inputSchema = z.object({
-  url: z
-    .string()
-    .url()
-    .describe("The fully-qualified URL to fetch and clean (https://...)."),
-});
-
-const outputSchema = z.object({
-  markdown: z.string().describe("Clean, agent-ready Markdown of the page."),
-  metadata: z
-    .record(z.string(), z.unknown())
-    .describe(
-      "Structured page metadata (title, byline, published date, language, excerpt).",
-    ),
-  source: z.string().describe("The URL that was read."),
-});
+const hasAuth = cardLane || walletAddress !== null;
 
 /**
- * Create a Mastra tool that reads any URL as clean Markdown via Skim
- * (https://skim402.com). Output is ~4x smaller than raw HTML.
- *
- * Two ways to pay: card plan API key (SKIM_API_KEY, recommended — free tier at
- * skim402.com/pricing) or x402 wallet ($0.002/read in USDC on Base,
- * SKIM_WALLET_PRIVATE_KEY). Card takes priority when both are set.
+ * Convenience schemas for extract_url presets. Card lane has no live
+ * /api/t/extract/{preset} routes today, so presets are sent as `schema`
+ * to POST /api/t/extract (or POST /api/v1/extract on the wallet lane).
+ * Field lists match skim402.com/docs extraction presets.
  */
-export function createSkimReaderTool(options: SkimReaderToolOptions = {}) {
-  const baseUrl = (
-    options.apiUrl ??
-    process.env.SKIM_API_URL ??
-    "https://skim402.com"
-  ).replace(/\/+$/, "");
-
-  const timeoutMs = (() => {
-    const parsed = Number(
-      options.timeoutMs ?? process.env.SKIM_TIMEOUT_MS ?? "90000",
-    );
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : 90_000;
-  })();
-
-  // Resolve auth method once at tool-creation time
-  const apiKey = options.apiKey ?? process.env.SKIM_API_KEY ?? "";
-
-  let payFetch: typeof fetch | null = null;
-  let cardLane = false;
-
-  if (apiKey) {
-    // Card lane: plain fetch + Bearer token
-    cardLane = true;
-    const key = apiKey;
-    payFetch = (input: Parameters<typeof fetch>[0], init?: RequestInit) =>
-      fetch(input, {
-        ...init,
-        headers: {
-          ...(init?.headers ?? {}),
-          Authorization: `Bearer ${key}`,
+const PRESET_SCHEMAS: Record<string, Record<string, unknown>> = {
+  article: {
+    type: "object",
+    properties: {
+      title: { type: "string" },
+      author: { type: "string" },
+      published: { type: "string" },
+      summary: { type: "string" },
+      key_points: { type: "array", items: { type: "string" } },
+      language: { type: "string" },
+    },
+    required: ["title"],
+  },
+  product: {
+    type: "object",
+    properties: {
+      name: { type: "string" },
+      brand: { type: "string" },
+      price: { type: "number" },
+      currency: { type: "string" },
+      availability: { type: "string" },
+      rating: { type: "number" },
+      reviewCount: { type: "number" },
+      description: { type: "string" },
+    },
+    required: ["name"],
+  },
+  job: {
+    type: "object",
+    properties: {
+      title: { type: "string" },
+      company: { type: "string" },
+      location: { type: "string" },
+      remote: { type: "boolean" },
+      employmentType: { type: "string" },
+      salaryMin: { type: "number" },
+      salaryMax: { type: "number" },
+      requirements: { type: "array", items: { type: "string" } },
+    },
+    required: ["title"],
+  },
+  review: {
+    type: "object",
+    properties: {
+      item: { type: "string" },
+      rating: { type: "number" },
+      scale: { type: "number" },
+      author: { type: "string" },
+      verdict: { type: "string" },
+      pros: { type: "array", items: { type: "string" } },
+      cons: { type: "array", items: { type: "string" } },
+    },
+    required: ["item"],
+  },
+  event: {
+    type: "object",
+    properties: {
+      name: { type: "string" },
+      startDate: { type: "string" },
+      endDate: { type: "string" },
+      venue: { type: "string" },
+      city: { type: "string" },
+      country: { type: "string" },
+      organizer: { type: "string" },
+      ticketPrice: { type: "string" },
+    },
+    required: ["name"],
+  },
+  table: {
+    type: "object",
+    properties: {
+      tables: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            caption: { type: "string" },
+            headers: { type: "array", items: { type: "string" } },
+            rows: {
+              type: "array",
+              items: { type: "array", items: { type: "string" } },
+            },
+          },
         },
-      });
-  } else {
-    // Wallet lane: x402 pay-per-call
-    const rawKey =
-      options.walletPrivateKey ?? process.env.SKIM_WALLET_PRIVATE_KEY ?? "";
-    if (rawKey) {
-      const normalized = rawKey.startsWith("0x") ? rawKey.slice(2) : rawKey;
-      if (!/^[0-9a-fA-F]{64}$/.test(normalized)) {
-        throw new Error(
-          "mastra-skim: wallet private key must be a 64-character hex string (with or without 0x prefix).",
-        );
-      }
-      const account = privateKeyToAccount(`0x${normalized}` as `0x${string}`);
-      const maxPrice = Number(
-        options.maxPriceUsd ?? process.env.SKIM_MAX_PRICE_USD ?? "0.01",
-      );
-      if (!Number.isFinite(maxPrice) || maxPrice <= 0) {
-        throw new Error(
-          "mastra-skim: maxPriceUsd (or SKIM_MAX_PRICE_USD) must be a positive number, e.g. 0.01.",
-        );
-      }
-      payFetch = wrapFetchWithPayment(
-        fetch,
-        account,
-        BigInt(Math.round(maxPrice * 1_000_000)),
-      ) as unknown as typeof fetch;
+      },
+    },
+    required: ["tables"],
+  },
+};
+
+function fail(text: string) {
+  return {
+    isError: true as const,
+    content: [{ type: "text" as const, text }],
+  };
+}
+
+function ok(text: string) {
+  return { content: [{ type: "text" as const, text }] };
+}
+
+function authMissing() {
+  return fail(
+    "Skim needs a payment method. Set SKIM_API_KEY (card plan, free tier at skim402.com/pricing) or SKIM_WALLET_PRIVATE_KEY (Base wallet with USDC). Card is easier — no crypto setup required.",
+  );
+}
+
+function buildUrl(path: string, query?: Record<string, string>): string {
+  const url = new URL(path, `${BASE_URL}/`);
+  if (query) {
+    for (const [key, value] of Object.entries(query)) {
+      url.searchParams.set(key, value);
     }
   }
+  return url.toString();
+}
 
-  return createTool({
-    id: "skim_read",
-    description:
-      "Fetch any URL and return clean, agent-ready Markdown via Skim (skim402.com). Output is ~4x smaller than raw HTML — fewer tokens, faster processing. Strips nav, ads, and boilerplate; preserves the article body plus structured metadata (title, byline, published date, language, excerpt). Use this whenever you need to read web content: articles, docs, blog posts, GitHub READMEs, research papers, etc.",
-    inputSchema,
-    outputSchema,
-    execute: async ({ url }) => {
-      if (!payFetch) {
-        throw new Error(
-          "Skim needs a payment method. Set SKIM_API_KEY (card plan, free tier at skim402.com/pricing) or SKIM_WALLET_PRIVATE_KEY (Base wallet with USDC, $0.002/call). Card is easier — no crypto setup required.",
-        );
-      }
+async function skimFetch(
+  method: "GET" | "POST",
+  path: string,
+  opts: { query?: Record<string, string>; body?: unknown } = {},
+): Promise<Response> {
+  const attempt = payFetch(buildUrl(path, opts.query), {
+    method,
+    headers:
+      method === "POST" ? { "Content-Type": "application/json" } : undefined,
+    body: method === "POST" ? JSON.stringify(opts.body ?? {}) : undefined,
+    signal: AbortSignal.timeout(TIMEOUT_MS),
+  });
+  let watchdog: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<never>((_, reject) => {
+    watchdog = setTimeout(
+      () =>
+        reject(
+          new Error(
+            `timed out after ${TIMEOUT_MS}ms (SKIM_TIMEOUT_MS) — the request or payment client stalled`,
+          ),
+        ),
+      TIMEOUT_MS + 5_000,
+    );
+  });
+  try {
+    return await Promise.race([attempt, deadline]);
+  } finally {
+    clearTimeout(watchdog);
+    attempt.catch(() => {});
+  }
+}
 
-      const endpoint = cardLane
-        ? `${baseUrl}/api/t/read`
-        : `${baseUrl}/api/v1/read`;
+function requestFailedMessage(err: unknown): string {
+  const msg = err instanceof Error ? err.message : String(err);
+  return cardLane
+    ? `Skim request failed: ${msg}. Check that your SKIM_API_KEY is valid (skim402.com/pricing).`
+    : `Skim request failed: ${msg}. Common causes: wallet has no USDC on Base, the price exceeds SKIM_MAX_PRICE_USD (${MAX_PRICE_USD}), or a stalled network/payment connection (retry is safe — you are not charged for unsettled calls). Wallet-lane batch/extract/watch cost more than a single read — raise SKIM_MAX_PRICE_USD (e.g. 0.05) if the cap is rejecting the call.`;
+}
 
-      let res: Response;
-      try {
-        const attempt = payFetch(endpoint, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ url, mode: "basic" }),
-          signal: AbortSignal.timeout(timeoutMs),
-        });
-        let watchdog: ReturnType<typeof setTimeout> | undefined;
-        const deadline = new Promise<never>((_, reject) => {
-          watchdog = setTimeout(
-            () =>
-              reject(
-                new Error(
-                  `timed out after ${timeoutMs}ms (SKIM_TIMEOUT_MS) — the request or payment client stalled`,
-                ),
-              ),
-            timeoutMs + 5_000,
-          );
-        });
-        try {
-          res = await Promise.race([attempt, deadline]);
-        } finally {
-          clearTimeout(watchdog);
-          attempt.catch(() => {});
-        }
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        throw new Error(
-          cardLane
-            ? `Skim request failed: ${msg}. Check that your SKIM_API_KEY is valid (skim402.com/pricing).`
-            : `Skim request failed: ${msg}. Common causes: wallet has no USDC on Base, the price exceeds the max price cap, or a stalled network/payment connection (retry is safe — you are not charged for unsettled calls).`,
-        );
-      }
+async function readJson(res: Response): Promise<unknown> {
+  const body = await res.text();
+  if (!res.ok) {
+    throw new Error(
+      `Skim returned ${res.status} ${res.statusText}: ${body || "(no body)"}`,
+    );
+  }
+  if (!body) return {};
+  try {
+    return JSON.parse(body) as unknown;
+  } catch {
+    return body;
+  }
+}
 
-      if (!res.ok) {
-        const body = await res.text().catch(() => "");
-        throw new Error(
-          `Skim returned ${res.status} ${res.statusText}: ${body || "(no body)"}`,
-        );
-      }
+function formatRead(data: {
+  markdown?: string;
+  text?: string;
+  metadata?: Record<string, unknown>;
+}): string {
+  const metaLines = data.metadata
+    ? Object.entries(data.metadata)
+        .filter(([, v]) => v != null && v !== "")
+        .map(([k, v]) => `${k}: ${typeof v === "string" ? v : JSON.stringify(v)}`)
+    : [];
+  const frontmatter =
+    metaLines.length > 0 ? `---\n${metaLines.join("\n")}\n---\n\n` : "";
+  return frontmatter + (data.markdown ?? data.text ?? "");
+}
 
-      const data = (await res.json()) as {
+const server = new McpServer({
+  name: "skim-mcp",
+  version: VERSION,
+});
+
+server.tool(
+  "read_url",
+  "Fetch any URL and return clean, agent-ready Markdown via Skim (skim402.com). Output is ~4x smaller than raw HTML — fewer tokens, faster processing. Strips nav, ads, and boilerplate; preserves the article body plus structured metadata (title, byline, published date, language, excerpt). Use this whenever you need to read web content: articles, docs, blog posts, GitHub READMEs, research papers, etc.",
+  {
+    url: z
+      .string()
+      .url()
+      .describe("The fully-qualified URL to fetch and clean (https://...)."),
+  },
+  async ({ url }) => {
+    if (!hasAuth) return authMissing();
+    try {
+      const res = cardLane
+        ? await skimFetch("GET", "/api/t/read", { query: { url } })
+        : await skimFetch("POST", "/api/v1/read", {
+            body: { url, mode: "basic" },
+          });
+      const data = (await readJson(res)) as {
         markdown?: string;
         text?: string;
         metadata?: Record<string, unknown>;
       };
+      return ok(formatRead(data));
+    } catch (err) {
+      return fail(requestFailedMessage(err));
+    }
+  },
+);
 
-      return {
-        markdown: data.markdown ?? data.text ?? "",
-        metadata: data.metadata ?? {},
-        source: url,
+server.tool(
+  "read_urls",
+  "Read up to 10 URLs in one Skim call and return per-URL clean Markdown plus metadata. Use this instead of calling read_url in a loop. Card lane: POST /api/t/read/batch. Wallet lane: POST /api/v1/read/batch.",
+  {
+    urls: z
+      .array(z.string().url())
+      .min(1)
+      .max(10)
+      .describe("1–10 fully-qualified http(s) URLs to read."),
+    stripLinks: z
+      .boolean()
+      .optional()
+      .describe("If true, flatten markdown links to their anchor text."),
+    stripImages: z
+      .boolean()
+      .optional()
+      .describe("If true, drop image markup from the markdown."),
+  },
+  async ({ urls, stripLinks, stripImages }) => {
+    if (!hasAuth) return authMissing();
+    try {
+      const path = cardLane ? "/api/t/read/batch" : "/api/v1/read/batch";
+      const res = await skimFetch("POST", path, {
+        body: {
+          urls,
+          ...(stripLinks !== undefined ? { stripLinks } : {}),
+          ...(stripImages !== undefined ? { stripImages } : {}),
+        },
+      });
+      const data = (await readJson(res)) as {
+        results?: Array<{
+          url: string;
+          ok: boolean;
+          data?: {
+            markdown?: string;
+            text?: string;
+            metadata?: Record<string, unknown>;
+          } | null;
+          error?: { status?: number; message?: string } | null;
+        }>;
       };
-    },
-  });
-}
+      const blocks = (data.results ?? []).map((item) => {
+        if (item.ok && item.data) {
+          return `## ${item.url}\n\n${formatRead(item.data)}`;
+        }
+        const err = item.error;
+        const detail = err
+          ? `${err.status ?? ""} ${err.message ?? ""}`.trim()
+          : "unknown error";
+        return `## ${item.url}\n\nERROR: ${detail}`;
+      });
+      return ok(blocks.join("\n\n---\n\n") || JSON.stringify(data, null, 2));
+    } catch (err) {
+      return fail(requestFailedMessage(err));
+    }
+  },
+);
 
-/**
- * Ready-made Skim reader tool using environment-variable configuration
- * (SKIM_API_KEY, SKIM_WALLET_PRIVATE_KEY, SKIM_API_URL, SKIM_MAX_PRICE_USD,
- * SKIM_TIMEOUT_MS). Card key takes priority when both SKIM_API_KEY and
- * SKIM_WALLET_PRIVATE_KEY are set.
- */
-export const skimReaderTool = createSkimReaderTool();
+server.tool(
+  "extract_url",
+  "Extract structured JSON (or tables) from a URL via Skim. Pass a JSON Schema, or a preset (article, product, job, review, event, table). Values come only from the page — missing fields are omitted or null, never invented. Card lane: POST /api/t/extract. Wallet lane: POST /api/v1/extract.",
+  {
+    url: z
+      .string()
+      .url()
+      .describe("The fully-qualified URL to fetch and extract from."),
+    schema: z
+      .record(z.unknown())
+      .optional()
+      .describe(
+        "JSON Schema (type: object) describing the output. Required unless preset is set. Wins if both are set.",
+      ),
+    preset: z
+      .enum(["article", "product", "job", "review", "event", "table"])
+      .optional()
+      .describe(
+        "Built-in extraction shape. Use table for data tables on the page. Ignored when schema is set.",
+      ),
+    instructions: z
+      .string()
+      .optional()
+      .describe(
+        "Optional natural-language hint (e.g. only quote prices from the article body).",
+      ),
+  },
+  async ({ url, schema, preset, instructions }) => {
+    if (!hasAuth) return authMissing();
+    const resolved =
+      schema ?? (preset ? PRESET_SCHEMAS[preset] : undefined);
+    if (!resolved) {
+      return fail(
+        "extract_url needs a JSON Schema (`schema`) or a `preset` (article, product, job, review, event, table).",
+      );
+    }
+    try {
+      const path = cardLane ? "/api/t/extract" : "/api/v1/extract";
+      const res = await skimFetch("POST", path, {
+        body: {
+          url,
+          schema: resolved,
+          ...(instructions ? { instructions } : {}),
+        },
+      });
+      const data = await readJson(res);
+      return ok(JSON.stringify(data, null, 2));
+    } catch (err) {
+      return fail(requestFailedMessage(err));
+    }
+  },
+);
+
+server.tool(
+  "watch_urls",
+  "Register a private Skim Watch on 1–20 URLs. Returns a watch_id (treat it as a secret) used with check_watch. First check baselines each page; later checks report content diffs. Card lane: POST /api/t/watch (intended token path from skim402-web; may 404 until that route is live). Wallet lane: POST /api/v2/watch.",
+  {
+    urls: z
+      .array(z.string().url())
+      .min(1)
+      .max(20)
+      .describe("1–20 fully-qualified http(s) URLs to watch."),
+    note: z
+      .string()
+      .optional()
+      .describe("Optional label for this watch (e.g. competitor pricing)."),
+  },
+  async ({ urls, note }) => {
+    if (!hasAuth) return authMissing();
+    try {
+      const path = cardLane ? "/api/t/watch" : "/api/v2/watch";
+      const res = await skimFetch("POST", path, {
+        body: { urls, ...(note ? { note } : {}) },
+      });
+      const data = await readJson(res);
+      return ok(JSON.stringify(data, null, 2));
+    } catch (err) {
+      const msg = requestFailedMessage(err);
+      if (cardLane && /404/.test(msg)) {
+        return fail(
+          `${msg}\n\nExpected card-lane path is POST /api/t/watch (see skim402-web Signals: POST /t/watch). That route is not live on skim402.com yet — align with skim402-web rather than inventing a different protocol. Wallet-lane POST /api/v2/watch is already live.`,
+        );
+      }
+      return fail(msg);
+    }
+  },
+);
+
+server.tool(
+  "check_watch",
+  "Poll a Skim Watch for content changes (or fetch registration status). Pass the watch_id from watch_urls. Card lane: GET /api/t/watch/diff?id= (or /status). Wallet lane: GET /api/v2/watch/diff?id= (or /status, which is free).",
+  {
+    watch_id: z
+      .string()
+      .min(1)
+      .describe("Watch id returned by watch_urls (treat as a secret)."),
+    status_only: z
+      .boolean()
+      .optional()
+      .describe(
+        "If true, return registration status only (no diff). Wallet-lane status is free.",
+      ),
+  },
+  async ({ watch_id, status_only }) => {
+    if (!hasAuth) return authMissing();
+    try {
+      const kind = status_only ? "status" : "diff";
+      const path = cardLane
+        ? `/api/t/watch/${kind}`
+        : `/api/v2/watch/${kind}`;
+      const res = await skimFetch("GET", path, { query: { id: watch_id } });
+      const data = await readJson(res);
+      return ok(JSON.stringify(data, null, 2));
+    } catch (err) {
+      const msg = requestFailedMessage(err);
+      if (cardLane && /404/.test(msg)) {
+        return fail(
+          `${msg}\n\nExpected card-lane paths are GET /api/t/watch/diff?id= and GET /api/t/watch/status?id= (skim402-web). Those routes are not live on skim402.com yet. Wallet-lane GET /api/v2/watch/diff and /status are already live.`,
+        );
+      }
+      return fail(msg);
+    }
+  },
+);
+
+const transport = new StdioServerTransport();
+await server.connect(transport);
+
+if (cardLane) {
+  process.stderr.write(
+    `skim-mcp ready — card key (SKIM_API_KEY) → ${BASE_URL}\n`,
+  );
+} else if (walletAddress) {
+  process.stderr.write(
+    `skim-mcp ready — paying from ${walletAddress} (max $${MAX_PRICE_USD}/call) → ${BASE_URL}\n`,
+  );
+} else {
+  process.stderr.write(
+    `skim-mcp ready (NO AUTH) — set SKIM_API_KEY or SKIM_WALLET_PRIVATE_KEY to enable tools → ${BASE_URL}\n`,
+  );
+}

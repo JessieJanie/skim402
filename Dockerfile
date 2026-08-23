@@ -3,7 +3,9 @@
 # The server starts and responds to MCP introspection (initialize + tools/list)
 # with no configuration, which is all Glama needs to evaluate quality.
 #
-# To enable paid reads at runtime, pass a funded Base wallet key:
+# To enable paid reads at runtime, pass a card API key (recommended)
+# or a funded Base wallet key:
+#   docker run -e SKIM_API_KEY=sk402_... skim-mcp
 #   docker run -e SKIM_WALLET_PRIVATE_KEY=0x... skim-mcp
 FROM node:22-slim
 # Pin the exact version so each rebuild busts Docker's layer cache and installs
