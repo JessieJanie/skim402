@@ -1,6 +1,6 @@
 {
   "name": "skim-mcp",
-  "version": "0.1.7",
+  "version": "0.2.0",
   "mcpName": "io.github.JessieJanie/skim402",
   "description": "MCP server for Skim — clean web reader for AI agents. Card API key or x402 wallet. Batch, extract, watch.",
   "type": "module",
