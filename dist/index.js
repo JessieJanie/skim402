@@ -1,127 +1,123 @@
-#!/usr/bin/env node
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { createTool } from "@mastra/core/tools";
 import { privateKeyToAccount } from "viem/accounts";
 import { wrapFetchWithPayment } from "x402-fetch";
 import { z } from "zod";
-const BASE_URL = (process.env.SKIM_API_URL ?? "https://skim402.com").replace(/\/+$/, "");
-const PRIVATE_KEY = process.env.SKIM_WALLET_PRIVATE_KEY;
-const MAX_PRICE_USD = process.env.SKIM_MAX_PRICE_USD ?? "0.01";
-const TIMEOUT_MS = (() => {
-    const parsed = Number(process.env.SKIM_TIMEOUT_MS ?? "90000");
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : 90_000;
-})();
-let payFetch = fetch;
-let walletAddress = null;
-if (PRIVATE_KEY) {
-    const normalized = PRIVATE_KEY.startsWith("0x")
-        ? PRIVATE_KEY.slice(2)
-        : PRIVATE_KEY;
-    if (!/^[0-9a-fA-F]{64}$/.test(normalized)) {
-        process.stderr.write("skim-mcp: SKIM_WALLET_PRIVATE_KEY must be a 64-character hex string (with or without 0x prefix). Refusing to start.\n");
-        process.exit(1);
-    }
-    const account = privateKeyToAccount(`0x${normalized}`);
-    walletAddress = account.address;
-    payFetch = wrapFetchWithPayment(fetch, account, BigInt(Math.round(Number(MAX_PRICE_USD) * 1_000_000)));
-}
-const server = new McpServer({
-    name: "skim-mcp",
-    version: "0.1.6",
-});
-server.tool("read_url", "Fetch any URL and return clean, agent-ready Markdown via Skim (skim402.com). Strips nav, ads, and boilerplate; preserves the article body plus structured metadata (title, byline, published date, language, excerpt). Pays $0.002 per call in USDC on Base over the x402 protocol — no API keys, no signup. Use this whenever you need to read web content: articles, docs, blog posts, GitHub READMEs, research papers, etc.", {
+const inputSchema = z.object({
     url: z
         .string()
         .url()
         .describe("The fully-qualified URL to fetch and clean (https://...)."),
-}, async ({ url }) => {
-    if (!PRIVATE_KEY) {
-        return {
-            isError: true,
-            content: [
-                {
-                    type: "text",
-                    text: "Skim requires payment via x402. Set the SKIM_WALLET_PRIVATE_KEY environment variable to a Base wallet funded with USDC. See https://skim402.com for details.",
-                },
-            ],
-        };
-    }
-    let res;
-    try {
-        // Two layers of hang protection:
-        // 1. AbortSignal.timeout aborts the underlying HTTP requests (both the
-        //    initial 402 handshake and the paid retry — x402-fetch reuses init).
-        // 2. Promise.race is a hard watchdog for anything inside the payment
-        //    client that stalls without honoring the abort signal (e.g. a hung
-        //    RPC or signing step), so a single bad call can never freeze the
-        //    whole process.
-        const attempt = payFetch(`${BASE_URL}/api/v1/read`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ url, mode: "basic" }),
-            signal: AbortSignal.timeout(TIMEOUT_MS),
-        });
-        let watchdog;
-        const deadline = new Promise((_, reject) => {
-            watchdog = setTimeout(() => reject(new Error(`timed out after ${TIMEOUT_MS}ms (SKIM_TIMEOUT_MS) — the request or payment client stalled`)), TIMEOUT_MS + 5_000);
-        });
-        try {
-            res = await Promise.race([attempt, deadline]);
-        }
-        finally {
-            clearTimeout(watchdog);
-            // If the watchdog won, make sure the losing fetch promise can't
-            // surface an unhandled rejection later.
-            attempt.catch(() => { });
-        }
-    }
-    catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        return {
-            isError: true,
-            content: [
-                {
-                    type: "text",
-                    text: `Skim request failed: ${msg}. Common causes: wallet has no USDC on Base, the price exceeds SKIM_MAX_PRICE_USD (${MAX_PRICE_USD}), or a stalled network/payment connection (the call was aborted after ${TIMEOUT_MS}ms; retry is safe — you are not charged for unsettled calls).`,
-                },
-            ],
-        };
-    }
-    if (!res.ok) {
-        const body = await res.text().catch(() => "");
-        return {
-            isError: true,
-            content: [
-                {
-                    type: "text",
-                    text: `Skim returned ${res.status} ${res.statusText}: ${body || "(no body)"}`,
-                },
-            ],
-        };
-    }
-    const data = (await res.json());
-    const metaLines = data.metadata
-        ? Object.entries(data.metadata)
-            .filter(([, v]) => v != null && v !== "")
-            .map(([k, v]) => `${k}: ${typeof v === "string" ? v : JSON.stringify(v)}`)
-        : [];
-    const frontmatter = metaLines.length > 0 ? `---\n${metaLines.join("\n")}\n---\n\n` : "";
-    return {
-        content: [
-            {
-                type: "text",
-                text: frontmatter + (data.markdown ?? data.text ?? ""),
-            },
-        ],
-    };
 });
-const transport = new StdioServerTransport();
-await server.connect(transport);
-// Surface startup status on stderr so MCP clients can show it in their logs
-// without interfering with the stdio JSON-RPC stream.
-if (walletAddress) {
-    process.stderr.write(`skim-mcp ready — paying from ${walletAddress} (max $${MAX_PRICE_USD}/call) → ${BASE_URL}\n`);
+const outputSchema = z.object({
+    markdown: z.string().describe("Clean, agent-ready Markdown of the page."),
+    metadata: z
+        .record(z.string(), z.unknown())
+        .describe("Structured page metadata (title, byline, published date, language, excerpt)."),
+    source: z.string().describe("The URL that was read."),
+});
+/**
+ * Create a Mastra tool that reads any URL as clean Markdown via Skim
+ * (https://skim402.com). Output is ~4x smaller than raw HTML.
+ *
+ * Two ways to pay: card plan API key (SKIM_API_KEY, recommended — free tier at
+ * skim402.com/pricing) or x402 wallet ($0.002/read in USDC on Base,
+ * SKIM_WALLET_PRIVATE_KEY). Card takes priority when both are set.
+ */
+export function createSkimReaderTool(options = {}) {
+    const baseUrl = (options.apiUrl ??
+        process.env.SKIM_API_URL ??
+        "https://skim402.com").replace(/\/+$/, "");
+    const timeoutMs = (() => {
+        const parsed = Number(options.timeoutMs ?? process.env.SKIM_TIMEOUT_MS ?? "90000");
+        return Number.isFinite(parsed) && parsed > 0 ? parsed : 90_000;
+    })();
+    // Resolve auth method once at tool-creation time
+    const apiKey = options.apiKey ?? process.env.SKIM_API_KEY ?? "";
+    let payFetch = null;
+    let cardLane = false;
+    if (apiKey) {
+        // Card lane: plain fetch + Bearer token
+        cardLane = true;
+        const key = apiKey;
+        payFetch = (input, init) => fetch(input, {
+            ...init,
+            headers: {
+                ...(init?.headers ?? {}),
+                Authorization: `Bearer ${key}`,
+            },
+        });
+    }
+    else {
+        // Wallet lane: x402 pay-per-call
+        const rawKey = options.walletPrivateKey ?? process.env.SKIM_WALLET_PRIVATE_KEY ?? "";
+        if (rawKey) {
+            const normalized = rawKey.startsWith("0x") ? rawKey.slice(2) : rawKey;
+            if (!/^[0-9a-fA-F]{64}$/.test(normalized)) {
+                throw new Error("mastra-skim: wallet private key must be a 64-character hex string (with or without 0x prefix).");
+            }
+            const account = privateKeyToAccount(`0x${normalized}`);
+            const maxPrice = Number(options.maxPriceUsd ?? process.env.SKIM_MAX_PRICE_USD ?? "0.01");
+            if (!Number.isFinite(maxPrice) || maxPrice <= 0) {
+                throw new Error("mastra-skim: maxPriceUsd (or SKIM_MAX_PRICE_USD) must be a positive number, e.g. 0.01.");
+            }
+            payFetch = wrapFetchWithPayment(fetch, account, BigInt(Math.round(maxPrice * 1_000_000)));
+        }
+    }
+    return createTool({
+        id: "skim_read",
+        description: "Fetch any URL and return clean, agent-ready Markdown via Skim (skim402.com). Output is ~4x smaller than raw HTML — fewer tokens, faster processing. Strips nav, ads, and boilerplate; preserves the article body plus structured metadata (title, byline, published date, language, excerpt). Use this whenever you need to read web content: articles, docs, blog posts, GitHub READMEs, research papers, etc.",
+        inputSchema,
+        outputSchema,
+        execute: async ({ url }) => {
+            if (!payFetch) {
+                throw new Error("Skim needs a payment method. Set SKIM_API_KEY (card plan, free tier at skim402.com/pricing) or SKIM_WALLET_PRIVATE_KEY (Base wallet with USDC, $0.002/call). Card is easier — no crypto setup required.");
+            }
+            const endpoint = cardLane
+                ? `${baseUrl}/api/t/read`
+                : `${baseUrl}/api/v1/read`;
+            let res;
+            try {
+                const attempt = payFetch(endpoint, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ url, mode: "basic" }),
+                    signal: AbortSignal.timeout(timeoutMs),
+                });
+                let watchdog;
+                const deadline = new Promise((_, reject) => {
+                    watchdog = setTimeout(() => reject(new Error(`timed out after ${timeoutMs}ms (SKIM_TIMEOUT_MS) — the request or payment client stalled`)), timeoutMs + 5_000);
+                });
+                try {
+                    res = await Promise.race([attempt, deadline]);
+                }
+                finally {
+                    clearTimeout(watchdog);
+                    attempt.catch(() => { });
+                }
+            }
+            catch (err) {
+                const msg = err instanceof Error ? err.message : String(err);
+                throw new Error(cardLane
+                    ? `Skim request failed: ${msg}. Check that your SKIM_API_KEY is valid (skim402.com/pricing).`
+                    : `Skim request failed: ${msg}. Common causes: wallet has no USDC on Base, the price exceeds the max price cap, or a stalled network/payment connection (retry is safe — you are not charged for unsettled calls).`);
+            }
+            if (!res.ok) {
+                const body = await res.text().catch(() => "");
+                throw new Error(`Skim returned ${res.status} ${res.statusText}: ${body || "(no body)"}`);
+            }
+            const data = (await res.json());
+            return {
+                markdown: data.markdown ?? data.text ?? "",
+                metadata: data.metadata ?? {},
+                source: url,
+            };
+        },
+    });
 }
-else {
-    process.stderr.write(`skim-mcp ready (NO WALLET) — set SKIM_WALLET_PRIVATE_KEY to enable paid reads → ${BASE_URL}\n`);
-}
+/**
+ * Ready-made Skim reader tool using environment-variable configuration
+ * (SKIM_API_KEY, SKIM_WALLET_PRIVATE_KEY, SKIM_API_URL, SKIM_MAX_PRICE_USD,
+ * SKIM_TIMEOUT_MS). Card key takes priority when both SKIM_API_KEY and
+ * SKIM_WALLET_PRIVATE_KEY are set.
+ */
+export const skimReaderTool = createSkimReaderTool();
