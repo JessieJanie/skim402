@@ -6,7 +6,7 @@
 [![MCP Registry](https://img.shields.io/badge/MCP-Registry-blue)](https://registry.modelcontextprotocol.io/v0/servers?search=skim402)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-`skim-mcp` is the official Model Context Protocol server for [Skim](https://skim402.com) — the clean reader API for AI agents. It exposes one tool, `read_url`, that your agent can call to fetch any web page as agent-ready Markdown plus structured metadata (title, byline, published date, language, excerpt).
+`skim-mcp` is the official Model Context Protocol server for [Skim](https://skim402.com) — the clean reader API for AI agents. It exposes `read_url`, `read_urls` (batch), `extract_url` (structured / table), `watch_urls`, and `check_watch`. The default path is a card-plan API key (`SKIM_API_KEY`); x402 wallet pay stays optional.
 
 > **See it before you wire it:** [try Skim free in your browser](https://freeskims.skim402.com) — 10 free skims a day, no signup. Paste a URL, see exactly what your agent gets back.
 
@@ -79,10 +79,8 @@ Fund a dedicated Base wallet with a small USDC balance ($1 ≈ 500 reads). Full 
 Test the endpoint directly. With a card key:
 
 ```bash
-curl -X POST https://skim402.com/api/t/read \
-  -H 'Authorization: Bearer sk402_your_key_here' \
-  -H 'Content-Type: application/json' \
-  -d '{"url":"https://en.wikipedia.org/wiki/HTTP_402"}'
+curl -H 'Authorization: Bearer sk402_your_key_here' \
+  'https://skim402.com/api/t/read?url=https://en.wikipedia.org/wiki/HTTP_402'
 ```
 
 Or without a key (returns a 402 challenge so you can see the x402 protocol):
@@ -95,17 +93,15 @@ curl -i -X POST https://skim402.com/api/v1/read \
 
 ---
 
-## The tool
+## The tools
 
 ### `read_url`
 
 Reads any URL and returns clean Markdown with a YAML frontmatter block.
 
-**Input:**
+**Input:** `{ "url": "https://example.com/article" }`
 
-```json
-{ "url": "https://example.com/article" }
-```
+**Routes:** `GET /api/t/read?url=` (API key) · `POST /api/v1/read` (wallet)
 
 **Output:**
 
@@ -123,7 +119,47 @@ excerpt: A short summary...
 The cleaned article body in Markdown...
 ```
 
-That's it. One tool, one input, one shape of output. Designed to drop into any agent's tool-calling loop with zero ceremony.
+### `read_urls`
+
+Batch-read 1–10 URLs in one call. Optional `stripLinks` / `stripImages`.
+
+**Input:** `{ "urls": ["https://a.example", "https://b.example"] }`
+
+**Routes:** `POST /api/t/read/batch` · `POST /api/v1/read/batch`
+
+### `extract_url`
+
+Structured JSON from a page. Pass a JSON Schema, or a preset: `article`, `product`, `job`, `review`, `event`, `table`.
+
+**Input:** `{ "url": "https://example.com/product", "preset": "product" }`
+
+**Routes:** `POST /api/t/extract` · `POST /api/v1/extract`
+
+Presets are sent as schemas on those extract routes (card lane has no live `/api/t/extract/{preset}` today). Align with skim402-web if that splits later.
+
+### `watch_urls` / `check_watch`
+
+Register 1–20 URLs, then poll for content diffs. `watch_id` is a secret.
+
+**Input:** `{ "urls": ["https://competitor.com/pricing"], "note": "pricing" }` then `{ "watch_id": "w_…" }` (optional `status_only: true`)
+
+**Routes (API key, intended):** `POST /api/t/watch` · `GET /api/t/watch/diff?id=` · `GET /api/t/watch/status?id=`
+
+**Routes (wallet, live):** `POST /api/v2/watch` · `GET /api/v2/watch/diff?id=` · `GET /api/v2/watch/status?id=`
+
+`/api/t/watch*` is documented on skim402-web (Signals: `POST /t/watch`) but was not serving on skim402.com when this package was wired. The MCP client still calls those paths so it works the moment they land — do not invent a different watch protocol.
+
+### Example agent prompts
+
+```
+Read https://en.wikipedia.org/wiki/HTTP_402 and summarize it.
+
+Read these three pages and compare their pricing: https://a.example/pricing https://b.example/pricing https://c.example/pricing
+
+Extract the product name, price, and availability from https://example.com/products/notebook as JSON.
+
+Watch https://competitor.com/pricing and https://competitor.com/changelog, then check the watch for changes.
+```
 
 ---
 
@@ -133,7 +169,7 @@ That's it. One tool, one input, one shape of output. Designed to drop into any a
 | ------------------------- | --------------------- | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `SKIM_API_KEY`            | **yes** (or wallet)   | —                     | Card-plan API key (`sk402_...`). Get one free at [skim402.com/pricing](https://skim402.com/pricing). Takes priority over `SKIM_WALLET_PRIVATE_KEY`.                                |
 | `SKIM_WALLET_PRIVATE_KEY` | **yes** (or card key) | —                     | Hex private key for the Base wallet that pays x402 reads ($0.002 USDC/call). Ignored when `SKIM_API_KEY` is set. Use a dedicated wallet — never your personal one.                |
-| `SKIM_MAX_PRICE_USD`      | no                    | `0.01`                | Wallet lane only. Hard cap on per-call price in USD. Skim is `$0.002`/call — leave alone unless tuning.                                                                            |
+| `SKIM_MAX_PRICE_USD`      | no                    | `0.01`                | Wallet lane only. Hard cap on per-call price in USD. Single reads are `$0.002`. Batch / extract / watch cost more — raise this (e.g. `0.05`) if the wallet lane rejects those calls. |
 | `SKIM_API_URL`            | no                    | `https://skim402.com` | Override the API base URL. For self-hosting or local development.                                                                                                                  |
 | `SKIM_TIMEOUT_MS`         | no                    | `90000`               | Hard deadline per call in milliseconds. Aborts stalled requests so a single bad call can never hang your agent. Unsettled calls are never charged, so retry is safe.               |
 
@@ -144,7 +180,7 @@ That's it. One tool, one input, one shape of output. Designed to drop into any a
 **Card lane:**
 
 ```
-your agent ──► skim-mcp ──► POST https://skim402.com/api/t/read
+your agent ──► skim-mcp ──► GET https://skim402.com/api/t/read?url=…
                                  Authorization: Bearer sk402_...
                                         │
                                         ▼

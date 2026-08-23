@@ -26,21 +26,27 @@
     {
       "registryType": "npm",
       "identifier": "skim-mcp",
-      "version": "0.1.6",
+      "version": "0.1.7",
       "runtimeHint": "npx",
       "transport": {
         "type": "stdio"
       },
       "environmentVariables": [
         {
+          "name": "SKIM_API_KEY",
+          "description": "Recommended. Card-plan API key (sk402_...). Get a free key at https://skim402.com/pricing. Takes priority over SKIM_WALLET_PRIVATE_KEY. Enables read_url, read_urls, extract_url, and watch tools without a wallet.",
+          "isRequired": false,
+          "isSecret": true
+        },
+        {
           "name": "SKIM_WALLET_PRIVATE_KEY",
-          "description": "Base-network wallet private key (0x-prefixed, 64 hex chars). Fund the wallet with a small amount of USDC on Base to pay $0.002 per call. Create one at https://app.coinbase.com or any Base-compatible wallet.",
-          "isRequired": true,
+          "description": "Optional. Base-network wallet private key (0x-prefixed, 64 hex chars) for x402 pay-per-call if you are not using SKIM_API_KEY. Fund with a small amount of USDC on Base. Ignored when SKIM_API_KEY is set.",
+          "isRequired": false,
           "isSecret": true
         },
         {
           "name": "SKIM_MAX_PRICE_USD",
-          "description": "Optional cap on per-call price in USD (default 0.01). Requests that would cost more than this are rejected without payment.",
+          "description": "Optional cap on per-call price in USD (default 0.01). Wallet lane only. Raise (e.g. 0.05) for batch/extract/watch. Requests that would cost more than this are rejected without payment.",
           "isRequired": false,
           "isSecret": false
         }
