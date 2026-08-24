@@ -5,7 +5,7 @@ import { privateKeyToAccount } from "viem/accounts";
 import { wrapFetchWithPayment } from "x402-fetch";
 import { z } from "zod";
 
-const VERSION = "0.1.7";
+const VERSION = "0.2.1";
 const BASE_URL = (process.env.SKIM_API_URL ?? "https://skim402.com").replace(
   /\/+$/,
   "",
@@ -173,6 +173,12 @@ function authMissing() {
   );
 }
 
+function cardLaneOnly(tool: string, path: string) {
+  return fail(
+    `${tool} is card-lane only (${path}) — there is no x402 /v1 twin. Set SKIM_API_KEY (sk402_..., free tier at skim402.com/pricing). Wallet pay still works for read_url, read_urls, extract_url, and watch.`,
+  );
+}
+
 function buildUrl(path: string, query?: Record<string, string>): string {
   const url = new URL(path, `${BASE_URL}/`);
   if (query) {
@@ -250,6 +256,54 @@ function formatRead(data: {
   const frontmatter =
     metaLines.length > 0 ? `---\n${metaLines.join("\n")}\n---\n\n` : "";
   return frontmatter + (data.markdown ?? data.text ?? "");
+}
+
+function formatCrawl(data: {
+  url?: string;
+  origin?: string;
+  pageCount?: number;
+  discovered?: number;
+  capped?: boolean;
+  maxPages?: number;
+  sources?: string[];
+  charged?: number;
+  fetchedAt?: string;
+  pages?: Array<{
+    url: string;
+    ok?: boolean;
+    title?: string;
+    markdown?: string;
+    error?: { status?: number; message?: string } | string | null;
+  }>;
+}): string {
+  const meta: Record<string, unknown> = {};
+  if (data.url) meta.url = data.url;
+  if (data.origin) meta.origin = data.origin;
+  if (data.pageCount != null) meta.pageCount = data.pageCount;
+  if (data.discovered != null) meta.discovered = data.discovered;
+  if (data.capped != null) meta.capped = data.capped;
+  if (data.maxPages != null) meta.maxPages = data.maxPages;
+  if (data.sources?.length) meta.sources = data.sources.join(", ");
+  if (data.charged != null) meta.charged = data.charged;
+  if (data.fetchedAt) meta.fetchedAt = data.fetchedAt;
+  const blocks = (data.pages ?? []).map((page) => {
+    if (page.ok !== false && (page.markdown || page.title)) {
+      const heading = page.title ? `${page.title} — ${page.url}` : page.url;
+      return `## ${heading}\n\n${page.markdown ?? ""}`;
+    }
+    const err = page.error;
+    const detail =
+      typeof err === "string"
+        ? err
+        : err
+          ? `${err.status ?? ""} ${err.message ?? ""}`.trim()
+          : "unknown error";
+    return `## ${page.url}\n\nERROR: ${detail}`;
+  });
+  return (
+    formatRead({ metadata: meta, markdown: blocks.join("\n\n---\n\n") }) ||
+    JSON.stringify(data, null, 2)
+  );
 }
 
 const server = new McpServer({
@@ -398,8 +452,109 @@ server.tool(
 );
 
 server.tool(
+  "crawl_url",
+  "Crawl a site (origin or start URL) and return clean Markdown for the important pages. Discovers sitemap.xml / robots.txt sitemaps plus same-origin links. Cap 25 pages. 1 credit per successful page; failed pages are not charged. Card lane only: POST /api/t/crawl. No x402 /v1 twin.",
+  {
+    url: z
+      .string()
+      .min(1)
+      .describe(
+        "Site origin or start URL. Bare hosts like example.com are treated as https://example.com.",
+      ),
+    maxPages: z
+      .number()
+      .int()
+      .min(1)
+      .max(25)
+      .optional()
+      .describe("Optional page cap, 1–25. Default 25."),
+    stripLinks: z
+      .boolean()
+      .optional()
+      .describe("If true, flatten markdown links to their anchor text on every page."),
+    stripImages: z
+      .boolean()
+      .optional()
+      .describe("If true, drop image markup from every page."),
+  },
+  async ({ url, maxPages, stripLinks, stripImages }) => {
+    if (!hasAuth) return authMissing();
+    if (!cardLane) return cardLaneOnly("crawl_url", "POST /api/t/crawl");
+    try {
+      const res = await skimFetch("POST", "/api/t/crawl", {
+        body: {
+          url,
+          ...(maxPages !== undefined ? { maxPages } : {}),
+          ...(stripLinks !== undefined ? { stripLinks } : {}),
+          ...(stripImages !== undefined ? { stripImages } : {}),
+        },
+      });
+      const data = (await readJson(res)) as Parameters<typeof formatCrawl>[0];
+      return ok(formatCrawl(data));
+    } catch (err) {
+      return fail(requestFailedMessage(err));
+    }
+  },
+);
+
+server.tool(
+  "read_pdf",
+  "Fetch a public PDF URL and return clean Markdown plus an optional bookmark outline. Text comes only from the file — nothing is invented. Image-only scans return 422 (no OCR). Files larger than 8 MB return 413. 3 credits; failed conversions are not charged. Card lane only: POST /api/t/read-pdf. No x402 /v1 twin.",
+  {
+    url: z
+      .string()
+      .url()
+      .describe("Absolute http(s) PDF URL to fetch and convert."),
+    outline: z
+      .boolean()
+      .optional()
+      .describe(
+        "If true (default), include the PDF bookmark outline when present. Set false to omit it.",
+      ),
+  },
+  async ({ url, outline }) => {
+    if (!hasAuth) return authMissing();
+    if (!cardLane) return cardLaneOnly("read_pdf", "POST /api/t/read-pdf");
+    try {
+      const res = await skimFetch("POST", "/api/t/read-pdf", {
+        body: {
+          url,
+          ...(outline !== undefined ? { outline } : {}),
+        },
+      });
+      const data = (await readJson(res)) as {
+        url?: string;
+        finalUrl?: string;
+        markdown?: string;
+        text?: string;
+        outline?: unknown;
+        pageCount?: number;
+        charged?: number;
+        fetchedAt?: string;
+      };
+      return ok(
+        formatRead({
+          markdown: data.markdown,
+          text: data.text,
+          metadata: {
+            ...(data.url ? { url: data.url } : {}),
+            ...(data.finalUrl ? { finalUrl: data.finalUrl } : {}),
+            ...(data.pageCount != null ? { pageCount: data.pageCount } : {}),
+            ...(data.charged != null ? { charged: data.charged } : {}),
+            ...(data.fetchedAt ? { fetchedAt: data.fetchedAt } : {}),
+            ...(data.outline != null ? { outline: data.outline } : {}),
+          },
+        }),
+      );
+    } catch (err) {
+      return fail(requestFailedMessage(err));
+    }
+  },
+);
+
+server.tool(
   "watch_urls",
-  "Register a private Skim Watch on 1–20 URLs. Returns a watch_id (treat it as a secret) used with check_watch. First check baselines each page; later checks report content diffs. Card lane: POST /api/t/watch (intended token path from skim402-web; may 404 until that route is live). Wallet lane: POST /api/v2/watch.",
+  "Register a private Skim Watch on 1–20 URLs. Returns a watch_id (treat it as a secret) used with check_watch. First check baselines each page; later checks report content diffs. Card lane: POST /api/t/watch. Wallet lane: POST /api/v2/watch.",
   {
     urls: z
       .array(z.string().url())
@@ -421,13 +576,7 @@ server.tool(
       const data = await readJson(res);
       return ok(JSON.stringify(data, null, 2));
     } catch (err) {
-      const msg = requestFailedMessage(err);
-      if (cardLane && /404/.test(msg)) {
-        return fail(
-          `${msg}\n\nExpected card-lane path is POST /api/t/watch (see skim402-web Signals: POST /t/watch). That route is not live on skim402.com yet — align with skim402-web rather than inventing a different protocol. Wallet-lane POST /api/v2/watch is already live.`,
-        );
-      }
-      return fail(msg);
+      return fail(requestFailedMessage(err));
     }
   },
 );
@@ -458,13 +607,7 @@ server.tool(
       const data = await readJson(res);
       return ok(JSON.stringify(data, null, 2));
     } catch (err) {
-      const msg = requestFailedMessage(err);
-      if (cardLane && /404/.test(msg)) {
-        return fail(
-          `${msg}\n\nExpected card-lane paths are GET /api/t/watch/diff?id= and GET /api/t/watch/status?id= (skim402-web). Those routes are not live on skim402.com yet. Wallet-lane GET /api/v2/watch/diff and /status are already live.`,
-        );
-      }
-      return fail(msg);
+      return fail(requestFailedMessage(err));
     }
   },
 );
