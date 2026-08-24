@@ -73,16 +73,21 @@ export function createSkimReaderTool(options = {}) {
                 throw new Error("Skim needs a payment method. Set SKIM_API_KEY (card plan, free tier at skim402.com/pricing) or SKIM_WALLET_PRIVATE_KEY (Base wallet with USDC, $0.002/call). Card is easier — no crypto setup required.");
             }
             const endpoint = cardLane
-                ? `${baseUrl}/api/t/read`
+                ? `${baseUrl}/api/t/read?url=${encodeURIComponent(url)}`
                 : `${baseUrl}/api/v1/read`;
             let res;
             try {
-                const attempt = payFetch(endpoint, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ url, mode: "basic" }),
-                    signal: AbortSignal.timeout(timeoutMs),
-                });
+                const attempt = cardLane
+                    ? payFetch(endpoint, {
+                        method: "GET",
+                        signal: AbortSignal.timeout(timeoutMs),
+                    })
+                    : payFetch(endpoint, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ url, mode: "basic" }),
+                        signal: AbortSignal.timeout(timeoutMs),
+                    });
                 let watchdog;
                 const deadline = new Promise((_, reject) => {
                     watchdog = setTimeout(() => reject(new Error(`timed out after ${timeoutMs}ms (SKIM_TIMEOUT_MS) — the request or payment client stalled`)), timeoutMs + 5_000);
