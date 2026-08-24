@@ -1,57 +1,58 @@
 {
-  "name": "skim-mcp",
-  "version": "0.2.0",
-  "mcpName": "io.github.JessieJanie/skim402",
-  "description": "MCP server for Skim — clean web reader for AI agents. Card API key or x402 wallet. Batch, extract, watch.",
+  "name": "mastra-skim",
+  "version": "0.1.2",
+  "description": "Mastra tool for Skim (skim402.com) — clean web reader for AI agents. Fetch any URL as agent-ready Markdown, paying $0.002 per call in USDC over x402. No signup, no API keys.",
   "type": "module",
-  "bin": {
-    "skim-mcp": "dist/index.js"
-  },
   "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
   "files": [
     "dist",
     "README.md",
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.build.json && node -e \"require('fs').chmodSync('dist/index.js', 0o755)\"",
-    "typecheck": "tsc --noEmit",
-    "dev": "tsx src/index.ts",
-    "prepublishOnly": "pnpm build",
-    "postinstall": "npm install -g tsx@4.21.0"
+    "build": "tsc -p tsconfig.json",
+    "prepublishOnly": "npm run build"
+  },
+  "peerDependencies": {
+    "@mastra/core": ">=1.0.0",
+    "zod": "^3.25.0 || ^4.0.0"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.0.0",
     "viem": "^2.21.0",
-    "x402-fetch": "^0.6.0",
-    "zod": "^3.25.76"
+    "x402-fetch": "^0.6.0"
   },
   "devDependencies": {
-    "@types/node": "^25.3.3",
-    "tsx": "^4.21.0",
-    "typescript": "^5.9.0"
+    "@mastra/core": "^1.51.0",
+    "@types/node": "^25.0.0",
+    "typescript": "^5.9.0",
+    "zod": "^4.0.0"
   },
   "publishConfig": {
     "access": "public",
     "registry": "https://registry.npmjs.org/"
   },
   "keywords": [
-    "mcp",
-    "model-context-protocol",
+    "mastra",
+    "mastra-tool",
     "x402",
     "skim",
     "ai",
     "agent",
     "reader",
     "markdown",
-    "web-scraping",
-    "claude",
-    "cursor"
+    "web-scraping"
   ],
   "homepage": "https://skim402.com",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/JessieJanie/skim402.git"
+    "url": "git+https://github.com/JessieJanie/skim-tools.git"
   },
   "license": "MIT",
   "engines": {
