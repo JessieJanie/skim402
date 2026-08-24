@@ -5,7 +5,7 @@ import { privateKeyToAccount } from "viem/accounts";
 import { wrapFetchWithPayment } from "x402-fetch";
 import { z } from "zod";
 
-const VERSION = "0.2.1";
+const VERSION = "0.2.3";
 const BASE_URL = (process.env.SKIM_API_URL ?? "https://skim402.com").replace(
   /\/+$/,
   "",
@@ -177,6 +177,36 @@ function cardLaneOnly(tool: string, path: string) {
   return fail(
     `${tool} is card-lane only (${path}) — there is no x402 /v1 twin. Set SKIM_API_KEY (sk402_..., free tier at skim402.com/pricing). Wallet pay still works for read_url, read_urls, extract_url, and watch.`,
   );
+}
+
+/** Catalog slugs from skim402.com/signals. x402 is a feed, not /signal/x402. */
+const SIGNAL_SLUGS = [
+  "ai-news",
+  "sec-filings",
+  "crypto-news",
+  "macro",
+  "security",
+  "regulations",
+  "courts",
+  "recalls",
+  "deals",
+  "launches",
+  "trending",
+  "research",
+  "energy",
+  "entertainment",
+  "studio-jobs",
+  "campaign-finance",
+  "film-incentives",
+  "x402",
+] as const;
+
+type SignalSlug = (typeof SIGNAL_SLUGS)[number];
+
+function signalPollPath(slug: SignalSlug): string {
+  return slug === "x402"
+    ? "/api/t/feeds/x402/latest"
+    : `/api/t/signal/${slug}/latest`;
 }
 
 function buildUrl(path: string, query?: Record<string, string>): string {
@@ -604,6 +634,77 @@ server.tool(
         ? `/api/t/watch/${kind}`
         : `/api/v2/watch/${kind}`;
       const res = await skimFetch("GET", path, { query: { id: watch_id } });
+      const data = await readJson(res);
+      return ok(JSON.stringify(data, null, 2));
+    } catch (err) {
+      return fail(requestFailedMessage(err));
+    }
+  },
+);
+
+server.tool(
+  "poll_signal",
+  "Poll a Skim Signal feed and return the latest structured items (title, summary, source, timestamp, link, entities). 2 credits per successful poll; failed polls are refunded. Card lane: GET /api/t/signal/{slug}/latest?limit= (filters: forms, categories, fields, states, committees). The x402 ecosystem feed is GET /api/t/feeds/x402/latest — never /signal/x402. Catalog: ai-news, sec-filings, crypto-news, macro, security, regulations, courts, recalls, deals, launches, trending, research, energy, entertainment, studio-jobs, campaign-finance, film-incentives, x402. Requires SKIM_API_KEY. No x402-fetch-compatible wallet twin (GET /api/v2/... returns a v2 402 with an empty body).",
+  {
+    slug: z
+      .enum(SIGNAL_SLUGS)
+      .describe(
+        "Signal slug from skim402.com/signals. Use x402 for the ecosystem feed (GET /api/t/feeds/x402/latest, not /signal/x402).",
+      ),
+    limit: z
+      .number()
+      .int()
+      .min(1)
+      .max(100)
+      .optional()
+      .describe("Max items, newest-first. Default 50, capped at 100."),
+    forms: z
+      .string()
+      .optional()
+      .describe(
+        "Comma-separated form filter. sec-filings: 8-K, S-1, 10-K, 10-Q, SC 13D, SC 13G, 4. campaign-finance: F1, F2, F3, F3P, F3X, F3L, F24, F5, F6, F9, F13, F99.",
+      ),
+    categories: z
+      .string()
+      .optional()
+      .describe(
+        "deals only. Comma-separated category terms (1–8, each 2–40 chars), e.g. laptop,gpu.",
+      ),
+    fields: z
+      .string()
+      .optional()
+      .describe(
+        "research only. Comma-separated arXiv fields: ai, ml, nlp, vision, robotics, agents, security, quantum.",
+      ),
+    states: z
+      .string()
+      .optional()
+      .describe(
+        "film-incentives only. Comma-separated two-letter states: CA, NY, GA, NM, TX.",
+      ),
+    committees: z
+      .string()
+      .optional()
+      .describe(
+        "campaign-finance only. Comma-separated committee-name substrings (1–8, each 2–60 chars), e.g. turning point,dnc.",
+      ),
+  },
+  async ({ slug, limit, forms, categories, fields, states, committees }) => {
+    if (!hasAuth) return authMissing();
+    if (!cardLane) {
+      return fail(
+        "poll_signal is card-lane only (GET /api/t/signal/{slug}/latest or GET /api/t/feeds/x402/latest) — set SKIM_API_KEY (sk402_..., free tier at skim402.com/pricing). The wallet twin is GET /api/v2/signal/{slug}/latest (or /api/v2/feeds/x402/latest), which returns a v2 402 with an empty body. The existing x402-fetch wrapper does not handle that handshake, so wallet-only configs cannot poll Signals.",
+      );
+    }
+    try {
+      const query: Record<string, string> = {};
+      if (limit !== undefined) query.limit = String(limit);
+      if (forms) query.forms = forms;
+      if (categories) query.categories = categories;
+      if (fields) query.fields = fields;
+      if (states) query.states = states;
+      if (committees) query.committees = committees;
+      const res = await skimFetch("GET", signalPollPath(slug), { query });
       const data = await readJson(res);
       return ok(JSON.stringify(data, null, 2));
     } catch (err) {
