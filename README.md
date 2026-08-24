@@ -6,7 +6,7 @@
 [![MCP Registry](https://img.shields.io/badge/MCP-Registry-blue)](https://registry.modelcontextprotocol.io/v0/servers?search=skim402)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-`skim-mcp` is the official Model Context Protocol server for [Skim](https://skim402.com) — the clean reader API for AI agents. It exposes `read_url`, `read_urls` (batch), `extract_url` (structured / table), `watch_urls`, and `check_watch`. The default path is a card-plan API key (`SKIM_API_KEY`); x402 wallet pay stays optional.
+`skim-mcp` is the official Model Context Protocol server for [Skim](https://skim402.com) — the clean reader API for AI agents. It exposes `read_url`, `read_urls` (batch), `extract_url` (structured / table), `crawl_url`, `read_pdf`, `watch_urls`, and `check_watch`. The default path is a card-plan API key (`SKIM_API_KEY`); x402 wallet pay stays optional.
 
 > **See it before you wire it:** [try Skim free in your browser](https://freeskims.skim402.com) — 10 free skims a day, no signup. Paste a URL, see exactly what your agent gets back.
 
@@ -137,17 +137,45 @@ Structured JSON from a page. Pass a JSON Schema, or a preset: `article`, `produc
 
 Presets are sent as schemas on those extract routes (card lane has no live `/api/t/extract/{preset}` today). Align with skim402-web if that splits later.
 
+### `crawl_url`
+
+Crawl a site (origin or start URL) and return clean Markdown per page. Discovers `sitemap.xml` / `robots.txt` sitemaps plus same-origin links. Cap 25 pages. **1 credit per successful page**; failed pages are not charged.
+
+**Input:** `{ "url": "https://example.com", "maxPages": 10 }`
+
+Optional: `stripLinks`, `stripImages` (passed through to each page read). Bare hosts like `example.com` are treated as `https://example.com`.
+
+**Route:** `POST /api/t/crawl` (API key). No x402 `/v1` twin — wallet-only configs get a clear error; set `SKIM_API_KEY`.
+
+```
+Crawl https://example.com (max 10 pages) and list the page titles.
+```
+
+### `read_pdf`
+
+Fetch a public PDF URL and return clean Markdown plus an optional bookmark outline. Text comes only from the file. Image-only scans return **422** (no OCR). Files larger than **8 MB** return **413**. **3 credits**; failed conversions are not charged.
+
+**Input:** `{ "url": "https://example.com/paper.pdf" }`
+
+Optional: `outline` (default `true`).
+
+**Route:** `POST /api/t/read-pdf` (API key). No x402 `/v1` twin — set `SKIM_API_KEY`.
+
+```
+Read the PDF at https://example.com/paper.pdf and summarize the outline.
+```
+
 ### `watch_urls` / `check_watch`
 
 Register 1–20 URLs, then poll for content diffs. `watch_id` is a secret.
 
 **Input:** `{ "urls": ["https://competitor.com/pricing"], "note": "pricing" }` then `{ "watch_id": "w_…" }` (optional `status_only: true`)
 
-**Routes (API key, intended):** `POST /api/t/watch` · `GET /api/t/watch/diff?id=` · `GET /api/t/watch/status?id=`
+**Routes (API key):** `POST /api/t/watch` · `GET /api/t/watch/diff?id=` · `GET /api/t/watch/status?id=`
 
-**Routes (wallet, live):** `POST /api/v2/watch` · `GET /api/v2/watch/diff?id=` · `GET /api/v2/watch/status?id=`
+**Routes (wallet):** `POST /api/v2/watch` · `GET /api/v2/watch/diff?id=` · `GET /api/v2/watch/status?id=`
 
-`/api/t/watch*` is documented on skim402-web (Signals: `POST /t/watch`) but was not serving on skim402.com when this package was wired. The MCP client still calls those paths so it works the moment they land — do not invent a different watch protocol.
+Card-lane `/api/t/watch*` is live (POST without a key returns `401`). Optional HTTPS `webhookUrl` is supported by the API; this MCP tool still sends `{ urls, note? }`.
 
 ### Example agent prompts
 
@@ -157,6 +185,10 @@ Read https://en.wikipedia.org/wiki/HTTP_402 and summarize it.
 Read these three pages and compare their pricing: https://a.example/pricing https://b.example/pricing https://c.example/pricing
 
 Extract the product name, price, and availability from https://example.com/products/notebook as JSON.
+
+Crawl https://example.com (max 10 pages) and list the page titles.
+
+Read the PDF at https://example.com/paper.pdf and summarize it.
 
 Watch https://competitor.com/pricing and https://competitor.com/changelog, then check the watch for changes.
 ```

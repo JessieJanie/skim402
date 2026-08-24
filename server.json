@@ -6,7 +6,7 @@
     "url": "https://github.com/JessieJanie/skim402.git",
     "source": "github"
   },
-  "version": "0.1.7",
+  "version": "0.2.1",
   "websiteUrl": "https://skim402.com",
   "remotes": [
     {
@@ -26,7 +26,7 @@
     {
       "registryType": "npm",
       "identifier": "skim-mcp",
-      "version": "0.1.7",
+      "version": "0.2.1",
       "runtimeHint": "npx",
       "transport": {
         "type": "stdio"
@@ -34,7 +34,7 @@
       "environmentVariables": [
         {
           "name": "SKIM_API_KEY",
-          "description": "Recommended. Card-plan API key (sk402_...). Get a free key at https://skim402.com/pricing. Takes priority over SKIM_WALLET_PRIVATE_KEY. Enables read_url, read_urls, extract_url, and watch tools without a wallet.",
+          "description": "Recommended. Card-plan API key (sk402_...). Get a free key at https://skim402.com/pricing. Takes priority over SKIM_WALLET_PRIVATE_KEY. Enables read_url, read_urls, extract_url, crawl_url, read_pdf, and watch tools without a wallet.",
           "isRequired": false,
           "isSecret": true
         },
