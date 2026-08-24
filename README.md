@@ -6,7 +6,7 @@
 [![MCP Registry](https://img.shields.io/badge/MCP-Registry-blue)](https://registry.modelcontextprotocol.io/v0/servers?search=skim402)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-`skim-mcp` is the official Model Context Protocol server for [Skim](https://skim402.com) — the clean reader API for AI agents. It exposes `read_url`, `read_urls` (batch), `extract_url` (structured / table), `crawl_url`, `read_pdf`, `watch_urls`, and `check_watch`. The default path is a card-plan API key (`SKIM_API_KEY`); x402 wallet pay stays optional.
+`skim-mcp` is the official Model Context Protocol server for [Skim](https://skim402.com) — the clean reader API for AI agents. It exposes `read_url`, `read_urls` (batch), `extract_url` (structured / table), `crawl_url`, `read_pdf`, `watch_urls`, `check_watch`, and `poll_signal`. The default path is a card-plan API key (`SKIM_API_KEY`); x402 wallet pay stays optional.
 
 > **See it before you wire it:** [try Skim free in your browser](https://freeskims.skim402.com) — 10 free skims a day, no signup. Paste a URL, see exactly what your agent gets back.
 
@@ -165,6 +165,31 @@ Optional: `outline` (default `true`).
 Read the PDF at https://example.com/paper.pdf and summarize the outline.
 ```
 
+### `poll_signal`
+
+Poll a [Skim Signal](https://skim402.com/signals) and return the latest structured items (title, summary, source, timestamp, link, entities). **2 credits** per successful poll; failed polls are refunded.
+
+**Requires `SKIM_API_KEY`.** Wallet-only configs get a clear error — the live wallet twin is `GET /api/v2/...` with a v2 402 and empty body, which the existing `x402-fetch` wrapper does not handle.
+
+**Input:** `{ "slug": "ai-news", "limit": 20 }`
+
+Optional filters (pass only those the feed documents): `forms` (sec-filings, campaign-finance), `categories` (deals), `fields` (research), `states` (film-incentives), `committees` (campaign-finance).
+
+**Slugs:** `ai-news`, `sec-filings`, `crypto-news`, `macro`, `security`, `regulations`, `courts`, `recalls`, `deals`, `launches`, `trending`, `research`, `energy`, `entertainment`, `studio-jobs`, `campaign-finance`, `film-incentives`. Use `x402` for the ecosystem feed.
+
+**Routes (API key):** `GET /api/t/signal/{slug}/latest?limit=` · `GET /api/t/feeds/x402/latest?limit=` (x402 is not `/signal/x402`)
+
+Key-first example:
+
+```bash
+curl -H 'Authorization: Bearer sk402_your_key_here' \
+  'https://skim402.com/api/t/signal/ai-news/latest?limit=20'
+```
+
+```
+Poll the ai-news signal for the latest 20 items.
+```
+
 ### `watch_urls` / `check_watch`
 
 Register 1–20 URLs, then poll for content diffs. `watch_id` is a secret.
@@ -189,6 +214,8 @@ Extract the product name, price, and availability from https://example.com/produ
 Crawl https://example.com (max 10 pages) and list the page titles.
 
 Read the PDF at https://example.com/paper.pdf and summarize it.
+
+Poll the ai-news signal for the latest 20 items.
 
 Watch https://competitor.com/pricing and https://competitor.com/changelog, then check the watch for changes.
 ```
