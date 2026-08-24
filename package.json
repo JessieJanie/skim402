@@ -1,7 +1,7 @@
 {
   "name": "mastra-skim",
-  "version": "0.1.2",
-  "description": "Mastra tool for Skim (skim402.com) — clean web reader for AI agents. Fetch any URL as agent-ready Markdown, paying $0.002 per call in USDC over x402. No signup, no API keys.",
+  "version": "0.1.3",
+  "description": "Mastra tool for Skim (skim402.com) — clean web reader for AI agents. Fetch any URL as agent-ready Markdown. Card plan API key (free tier at skim402.com/pricing) or pay-per-call via x402 USDC wallet.",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
