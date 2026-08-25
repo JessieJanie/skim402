@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "skim": {
+      "command": "npx",
+      "args": ["-y", "skim-mcp"],
+      "env": {
+        "SKIM_API_KEY": ""
+      }
+    }
+  }
+}

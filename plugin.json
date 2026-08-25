@@ -1,0 +1,11 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "skim",
+  "description": "URLs to clean markdown for agents. Free card key at skim402.com.",
+  "homepage": "https://skim402.com",
+  "repository": "https://github.com/JessieJanie/skim402",
+  "license": "MIT",
+  "author": {
+    "name": "JessieJanie"
+  }
+}
