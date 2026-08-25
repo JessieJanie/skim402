@@ -1,14 +1,20 @@
 # skim-mcp
 
-**Give your AI agent the ability to read any URL — clean Markdown, ~4x smaller than raw HTML. No ads, no nav, no boilerplate.**
+**Skim turns URLs into clean markdown for agents. Get a free card key at [https://skim402.com](https://skim402.com) (`sk402_`). Wallet/x402 is optional.**
 
 [![npm version](https://img.shields.io/npm/v/skim-mcp.svg)](https://www.npmjs.com/package/skim-mcp)
 [![MCP Registry](https://img.shields.io/badge/MCP-Registry-blue)](https://registry.modelcontextprotocol.io/v0/servers?search=skim402)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-`skim-mcp` is the official Model Context Protocol server for [Skim](https://skim402.com) — the clean reader API for AI agents. It exposes `read_url`, `read_urls` (batch), `extract_url` (structured / table), `crawl_url`, `read_pdf`, `watch_urls`, `check_watch`, and `poll_signal`. The default path is a card-plan API key (`SKIM_API_KEY`); x402 wallet pay stays optional.
+`skim-mcp` is the official Model Context Protocol server for [Skim](https://skim402.com). It turns any URL into clean, agent-ready Markdown (no ads, no nav, no boilerplate).
 
-> **See it before you wire it:** [try Skim free in your browser](https://freeskims.skim402.com) — 10 free skims a day, no signup. Paste a URL, see exactly what your agent gets back.
+**Default path: a card-plan API key.** Get a free `sk402_` key at [skim402.com](https://skim402.com) ([pricing](https://skim402.com/pricing)). Paste it as `SKIM_API_KEY`. A crypto wallet is **not** required.
+
+**Optional path: x402 wallet pay.** If you prefer pay-per-call in USDC on Base, you can set `SKIM_WALLET_PRIVATE_KEY` instead. Ignore this unless you want it.
+
+**Tools in this package:** `read_url`, `read_urls`, `extract_url`, `crawl_url`, `read_pdf`, `watch_urls`, `check_watch`, `poll_signal`.
+
+> **Try it in the browser:** [freeskims.skim402.com](https://freeskims.skim402.com) — 10 free skims a day. Paste a URL and see what your agent gets back.
 
 ![Skim in action — one URL in, clean Markdown out](https://raw.githubusercontent.com/JessieJanie/skim402/main/demo.gif)
 
@@ -16,13 +22,11 @@
 
 ## Quickstart (60 seconds)
 
-### Option A — Card API key (recommended)
+### Card API key (recommended)
 
-**1.** Get a free key at **[skim402.com/pricing](https://skim402.com/pricing)** — 1,000 reads/month, card required at signup.
+**1.** Get a free key at **[skim402.com](https://skim402.com)** — it starts with `sk402_`. Card required at signup; 1,000 reads/month on the free plan. Details: [skim402.com/pricing](https://skim402.com/pricing).
 
-**2.** Add to your MCP client config:
-
-**Claude Desktop** — edit `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
+**2.** Add this to your MCP client. **Claude Desktop** — `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows). **Cursor** — `~/.cursor/mcp.json` (or **Settings → MCP**). Same JSON works in Cline, Continue, Zed, and other MCP clients:
 
 ```json
 {
@@ -38,21 +42,17 @@
 }
 ```
 
-**Cursor** — edit `~/.cursor/mcp.json` (or **Settings → MCP**) with the same JSON block.
-
-**Cline, Continue, Zed, or any other MCP client** — same shape; the binary is `npx skim-mcp` with one env var.
-
-**3.** Restart your client and ask it to read something:
+**3.** Restart the client and ask it to read a URL:
 
 ```
-Claude, read https://en.wikipedia.org/wiki/HTTP_402 and summarize it.
+Read https://en.wikipedia.org/wiki/HTTP_402 and summarize it.
 ```
 
 ---
 
-### Option B — Pay per call with a crypto wallet
+### Wallet / x402 (optional)
 
-If you prefer x402 pay-per-call ($0.002 USDC on Base, no monthly plan):
+Only if you prefer pay-per-call ($0.002 USDC on Base) instead of a card key. You can skip this entire block.
 
 ```json
 {
@@ -68,22 +68,35 @@ If you prefer x402 pay-per-call ($0.002 USDC on Base, no monthly plan):
 }
 ```
 
-Fund a dedicated Base wallet with a small USDC balance ($1 ≈ 500 reads). Full setup guide with screenshots: **<https://skim402.com/wallet>**.
+Fund a **dedicated** Base wallet with a small USDC balance ($1 ≈ 500 reads). Setup guide: **<https://skim402.com/wallet>**.
 
-> **Use a fresh wallet, not your personal one.** This wallet's private key lives in a plaintext config file on your machine — treat it like a hot-wallet for paying $0.002 tolls, not a savings account.
+> **Use a fresh wallet, not your personal one.** This private key lives in a plaintext config file on your machine — treat it like a hot wallet for $0.002 tolls, not a savings account.
+
+---
+
+## FAQ
+
+**Do I need an API key?**  
+Yes for the default path. Get a free `sk402_` key at [https://skim402.com](https://skim402.com). A wallet is optional.
+
+**Is this wallet-only? Do I need crypto?**  
+No. Card API key is the default. x402 wallet pay is optional.
+
+**What tools can my agent call?**  
+`read_url`, `read_urls` (batch), `extract_url`, `crawl_url`, `read_pdf`, `watch_urls`, `check_watch`, and `poll_signal`.
 
 ---
 
 ## Try it without an agent
 
-Test the endpoint directly. With a card key:
+With a card key:
 
 ```bash
 curl -H 'Authorization: Bearer sk402_your_key_here' \
   'https://skim402.com/api/t/read?url=https://en.wikipedia.org/wiki/HTTP_402'
 ```
 
-Or without a key (returns a 402 challenge so you can see the x402 protocol):
+Wallet / x402 challenge (optional — returns HTTP 402 if you send no payment):
 
 ```bash
 curl -i -X POST https://skim402.com/api/v1/read \
@@ -135,7 +148,7 @@ Structured JSON from a page. Pass a JSON Schema, or a preset: `article`, `produc
 
 **Routes:** `POST /api/t/extract` · `POST /api/v1/extract`
 
-Presets are sent as schemas on those extract routes (card lane has no live `/api/t/extract/{preset}` today). Align with skim402-web if that splits later.
+Presets are sent as schemas on those extract routes.
 
 ### `crawl_url`
 
@@ -143,9 +156,9 @@ Crawl a site (origin or start URL) and return clean Markdown per page. Discovers
 
 **Input:** `{ "url": "https://example.com", "maxPages": 10 }`
 
-Optional: `stripLinks`, `stripImages` (passed through to each page read). Bare hosts like `example.com` are treated as `https://example.com`.
+Optional: `stripLinks`, `stripImages`. Bare hosts like `example.com` are treated as `https://example.com`.
 
-**Route:** `POST /api/t/crawl` (API key). No x402 `/v1` twin — wallet-only configs get a clear error; set `SKIM_API_KEY`.
+**Route:** `POST /api/t/crawl` (API key). No x402 `/v1` twin — set `SKIM_API_KEY`.
 
 ```
 Crawl https://example.com (max 10 pages) and list the page titles.
@@ -169,7 +182,7 @@ Read the PDF at https://example.com/paper.pdf and summarize the outline.
 
 Poll a [Skim Signal](https://skim402.com/signals) and return the latest structured items (title, summary, source, timestamp, link, entities). **2 credits** per successful poll; failed polls are refunded.
 
-**Requires `SKIM_API_KEY`.** Wallet-only configs get a clear error — the live wallet twin is `GET /api/v2/...` with a v2 402 and empty body, which the existing `x402-fetch` wrapper does not handle.
+**Requires `SKIM_API_KEY`.** Wallet-only configs get a clear error.
 
 **Input:** `{ "slug": "ai-news", "limit": 20 }`
 
@@ -178,8 +191,6 @@ Optional filters (pass only those the feed documents): `forms` (sec-filings, cam
 **Slugs:** `ai-news`, `sec-filings`, `crypto-news`, `macro`, `security`, `regulations`, `courts`, `recalls`, `deals`, `launches`, `trending`, `research`, `energy`, `entertainment`, `studio-jobs`, `campaign-finance`, `film-incentives`. Use `x402` for the ecosystem feed.
 
 **Routes (API key):** `GET /api/t/signal/{slug}/latest?limit=` · `GET /api/t/feeds/x402/latest?limit=` (x402 is not `/signal/x402`)
-
-Key-first example:
 
 ```bash
 curl -H 'Authorization: Bearer sk402_your_key_here' \
@@ -199,8 +210,6 @@ Register 1–20 URLs, then poll for content diffs. `watch_id` is a secret.
 **Routes (API key):** `POST /api/t/watch` · `GET /api/t/watch/diff?id=` · `GET /api/t/watch/status?id=`
 
 **Routes (wallet):** `POST /api/v2/watch` · `GET /api/v2/watch/diff?id=` · `GET /api/v2/watch/status?id=`
-
-Card-lane `/api/t/watch*` is live (POST without a key returns `401`). Optional HTTPS `webhookUrl` is supported by the API; this MCP tool still sends `{ urls, note? }`.
 
 ### Example agent prompts
 
@@ -226,8 +235,8 @@ Watch https://competitor.com/pricing and https://competitor.com/changelog, then 
 
 | Variable                  | Required              | Default               | Notes                                                                                                                                                                              |
 | ------------------------- | --------------------- | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `SKIM_API_KEY`            | **yes** (or wallet)   | —                     | Card-plan API key (`sk402_...`). Get one free at [skim402.com/pricing](https://skim402.com/pricing). Takes priority over `SKIM_WALLET_PRIVATE_KEY`.                                |
-| `SKIM_WALLET_PRIVATE_KEY` | **yes** (or card key) | —                     | Hex private key for the Base wallet that pays x402 reads ($0.002 USDC/call). Ignored when `SKIM_API_KEY` is set. Use a dedicated wallet — never your personal one.                |
+| `SKIM_API_KEY`            | **yes** (or wallet)   | —                     | Card-plan API key (`sk402_...`). Get one free at [skim402.com](https://skim402.com) / [pricing](https://skim402.com/pricing). Takes priority over `SKIM_WALLET_PRIVATE_KEY`.       |
+| `SKIM_WALLET_PRIVATE_KEY` | optional              | —                     | Only if you are not using a card key. Hex private key for a dedicated Base wallet that pays x402 reads ($0.002 USDC/call). Ignored when `SKIM_API_KEY` is set. Never use a personal wallet. |
 | `SKIM_MAX_PRICE_USD`      | no                    | `0.01`                | Wallet lane only. Hard cap on per-call price in USD. Single reads are `$0.002`. Batch / extract / watch cost more — raise this (e.g. `0.05`) if the wallet lane rejects those calls. |
 | `SKIM_API_URL`            | no                    | `https://skim402.com` | Override the API base URL. For self-hosting or local development.                                                                                                                  |
 | `SKIM_TIMEOUT_MS`         | no                    | `90000`               | Hard deadline per call in milliseconds. Aborts stalled requests so a single bad call can never hang your agent. Unsettled calls are never charged, so retry is safe.               |
@@ -236,7 +245,7 @@ Watch https://competitor.com/pricing and https://competitor.com/changelog, then 
 
 ## How it actually works
 
-**Card lane:**
+**Card lane (default):**
 
 ```
 your agent ──► skim-mcp ──► GET https://skim402.com/api/t/read?url=…
@@ -246,7 +255,7 @@ your agent ──► skim-mcp ──► GET https://skim402.com/api/t/read?url=�
                                 200 OK + clean Markdown
 ```
 
-**Wallet lane (x402):**
+**Wallet lane (x402, optional):**
 
 ```
 your agent ──► skim-mcp ──► POST https://skim402.com/api/v1/read
@@ -275,8 +284,8 @@ End-to-end latency is typically **1.5–2 seconds** including settlement. Wallet
 
 ## Security
 
-- **Card key:** stored in your MCP client's JSON config. Anyone with read access to that file can use your key. Keep your key small-balance or use the free plan.
-- **Wallet key:** lives in the same JSON config in plaintext. Anyone with access to your home directory can drain the wallet. Keep it funded with only as much USDC as you're willing to spend in a runaway loop.
+- **Card key:** stored in your MCP client's JSON config. Anyone with read access to that file can use your key. Keep your key on the free plan or a small-balance plan.
+- **Wallet key (only if you use the optional wallet path):** lives in the same JSON config in plaintext. Anyone with access to your home directory can drain the wallet. Keep it funded with only as much USDC as you're willing to spend in a runaway loop.
 - **No outbound telemetry from this package.** `skim-mcp` only talks to `skim402.com` (or whatever you set as `SKIM_API_URL`). No analytics, no error reporting, no phone-home.
 
 ---
