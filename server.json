@@ -1,7 +1,7 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.JessieJanie/skim402",
-  "description": "Clean markdown and structured web data for agents. Start free with a card API key (sk402_) at skim402.com; wallet/x402 is optional for pay-per-call.",
+  "description": "Clean markdown and structured web data. Free card API key; wallet/x402 pay-per-call optional.",
   "repository": {
     "url": "https://github.com/JessieJanie/skim402.git",
     "source": "github"
