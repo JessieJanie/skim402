@@ -1,12 +1,12 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.JessieJanie/skim402",
-  "description": "URLs to clean markdown for agents. Free card key (sk402_) at skim402.com; wallet/x402 optional.",
+  "description": "Clean markdown and structured web data for agents. Start free with a card API key (sk402_) at skim402.com; wallet/x402 is optional for pay-per-call.",
   "repository": {
     "url": "https://github.com/JessieJanie/skim402.git",
     "source": "github"
   },
-  "version": "0.2.3",
+  "version": "0.2.5",
   "websiteUrl": "https://skim402.com",
   "remotes": [
     {
@@ -15,7 +15,7 @@
       "headers": [
         {
           "name": "X-Skim-Wallet-Key",
-          "description": "Optional x402 wallet key. Recommended path is a card API key (sk402_) from https://skim402.com/pricing — use the npm package env SKIM_API_KEY. Without this header, skim_read works on the shared free tier. For wallet pay: a fresh, low-balance Base wallet private key."
+          "description": "Optional. Without it, skim_read works on the shared free tier. To pay per call via x402 wallet: add a Base wallet private key (fresh, low-balance agent wallet) — unlocks paid tools at $0.002/$0.005/$0.015. Card plan alternative (API key): https://skim402.com/pricing",
           "isRequired": false,
           "isSecret": true
         }
@@ -26,7 +26,7 @@
     {
       "registryType": "npm",
       "identifier": "skim-mcp",
-      "version": "0.2.3",
+      "version": "0.2.5",
       "runtimeHint": "npx",
       "transport": {
         "type": "stdio"
