@@ -2,7 +2,7 @@
   "name": "skim-mcp",
   "version": "0.2.3",
   "mcpName": "io.github.JessieJanie/skim402",
-  "description": "MCP server for Skim — URLs to clean markdown. Card API key (sk402_) default; wallet/x402 optional. Batch, extract, crawl, PDF, watch, signals.",
+  "description": "Skim's full MCP toolkit: clean + batch reads, JavaScript rendering, extraction, crawl, PDFs, page watches, and Signals. Card API key first; x402 optional.",
   "type": "module",
   "bin": {
     "skim-mcp": "dist/index.js"
