@@ -1,12 +1,12 @@
 # skim-mcp
 
-**Skim turns URLs into clean markdown for agents. Get a free card key at [https://skim402.com](https://skim402.com) (`sk402_`). Wallet/x402 is optional.**
+**Skim is the complete web toolkit for AI agents—not just a simple page reader. Get a free card key at [skim402.com/pricing](https://skim402.com/pricing); wallet/x402 is optional.**
 
 [![npm version](https://img.shields.io/npm/v/skim-mcp.svg)](https://www.npmjs.com/package/skim-mcp)
 [![MCP Registry](https://img.shields.io/badge/MCP-Registry-blue)](https://registry.modelcontextprotocol.io/v0/servers?search=skim402)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-`skim-mcp` is the official Model Context Protocol server for [Skim](https://skim402.com). It turns any URL into clean, agent-ready Markdown (no ads, no nav, no boilerplate).
+`skim-mcp` is the official Model Context Protocol server for [Skim](https://skim402.com). It turns public pages into clean, agent-ready Markdown—typically ~4x smaller than raw HTML in Skim's measured comparisons—and exposes the full toolkit: clean reads, batch reads, JavaScript/browser rendering, structured extraction, crawling, PDFs, page-change watches, and curated Signals.
 
 **Default path: a card-plan API key.** Get a free `sk402_` key at [skim402.com](https://skim402.com) ([pricing](https://skim402.com/pricing)). Paste it as `SKIM_API_KEY`. A crypto wallet is **not** required.
 
@@ -14,7 +14,7 @@
 
 **Tools in this package:** `read_url`, `read_urls`, `extract_url`, `crawl_url`, `read_pdf`, `watch_urls`, `check_watch`, `poll_signal`.
 
-> **Try it in the browser:** [freeskims.skim402.com](https://freeskims.skim402.com) — 10 free skims a day. Paste a URL and see what your agent gets back.
+> **Try before you integrate:** use the [Playground](https://skim402.com/playground) for a quick read or the [Workbench](https://skim402.com/workbench) to test batches, extraction, crawl, PDFs, watches, and Signals.
 
 ![Skim in action — one URL in, clean Markdown out](https://raw.githubusercontent.com/JessieJanie/skim402/main/demo.gif)
 
