@@ -1,0 +1,21 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "skim",
+  "version": "0.2.5",
+  "description": "Read webpages, PDFs, and structured web data as clean Markdown or JSON with Skim's card-key MCP server.",
+  "author": {
+    "name": "Skim",
+    "url": "https://skim402.com"
+  },
+  "homepage": "https://skim402.com",
+  "repository": "https://github.com/JessieJanie/skim402",
+  "license": "MIT",
+  "keywords": [
+    "skim",
+    "skim402",
+    "clean markdown",
+    "web reader",
+    "webpage reader"
+  ],
+  "mcpServers": ".mcp.json"
+}

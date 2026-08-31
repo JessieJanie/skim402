@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "skim": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "skim-mcp@0.2.5"],
+      "env": {
+        "SKIM_API_KEY": "${SKIM_API_KEY}"
+      }
+    }
+  }
+}
