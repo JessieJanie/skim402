@@ -18,7 +18,7 @@
     "typecheck": "tsc --noEmit",
     "dev": "tsx src/index.ts",
     "prepublishOnly": "pnpm build",
-    "postinstall": "npm install -g tsx@4.21.0"
+    "start": "node dist/index.js"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",

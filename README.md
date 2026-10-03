@@ -1,3 +1,11 @@
+# Claude plugin users
+
+The Claude plugin in this repository uses a bundled, card-key-only server.
+It does not run the npm/wallet setup below. See [CLAUDE-PLUGIN.md](CLAUDE-PLUGIN.md)
+for installation, data handling, credit costs, and reviewer checks.
+
+---
+
 # skim-mcp
 
 **Skim is the complete web toolkit for AI agents—not just a simple page reader. Get a free card key at [skim402.com/pricing](https://skim402.com/pricing); wallet/x402 is optional.**

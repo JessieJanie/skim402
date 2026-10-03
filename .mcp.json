@@ -1,10 +1,11 @@
 {
   "mcpServers": {
     "skim": {
-      "command": "npx",
-      "args": ["-y", "skim-mcp"],
+      "type": "stdio",
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/claude-plugin/server.cjs"],
       "env": {
-        "SKIM_API_KEY": ""
+        "SKIM_API_KEY": "${user_config.skim_api_key}"
       }
     }
   }
