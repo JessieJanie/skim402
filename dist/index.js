@@ -4,7 +4,8 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { privateKeyToAccount } from "viem/accounts";
 import { wrapFetchWithPayment } from "x402-fetch";
 import { z } from "zod";
-const VERSION = "0.2.3";
+import { READ_URLS_MAX, formatBatchMarkdown, readUrlsInBatches, } from "./readBatch.js";
+const VERSION = "0.2.6";
 const BASE_URL = (process.env.SKIM_API_URL ?? "https://skim402.com").replace(/\/+$/, "");
 const API_KEY = process.env.SKIM_API_KEY ?? "";
 const PRIVATE_KEY = process.env.SKIM_WALLET_PRIVATE_KEY ?? "";
@@ -277,7 +278,7 @@ const server = new McpServer({
     name: "skim-mcp",
     version: VERSION,
 });
-server.tool("read_url", "Fetch any URL and return clean, agent-ready Markdown via Skim (skim402.com). Output is ~4x smaller than raw HTML — fewer tokens, faster processing. Strips nav, ads, and boilerplate; preserves the article body plus structured metadata (title, byline, published date, language, excerpt). Use this whenever you need to read web content: articles, docs, blog posts, GitHub READMEs, research papers, etc.", {
+server.tool("read_url", "Fetch one URL and return clean, agent-ready Markdown via Skim (skim402.com). Output is ~4x smaller than raw HTML — fewer tokens, faster processing. Strips nav, ads, and boilerplate; preserves the article body plus structured metadata (title, byline, published date, language, excerpt). For two or more URLs, call read_urls once so Skim batches them together.", {
     url: z
         .string()
         .url()
@@ -298,12 +299,12 @@ server.tool("read_url", "Fetch any URL and return clean, agent-ready Markdown vi
         return fail(requestFailedMessage(err));
     }
 });
-server.tool("read_urls", "Read up to 10 URLs in one Skim call and return per-URL clean Markdown plus metadata. Use this instead of calling read_url in a loop. Card lane: POST /api/t/read/batch. Wallet lane: POST /api/v1/read/batch.", {
+server.tool("read_urls", "Read many URLs and return each page as clean Markdown plus metadata, in the same order as the input. Prefer read_urls over read_url for two or more URLs: one call batches the work. Each request sends at most 10 URLs to POST /api/t/read/batch (card key) or POST /api/v1/read/batch (wallet). Longer lists are split into batches of 10, with up to 3 batches running at the same time, then merged back into input order. Accepts 1–50 URLs. stripLinks and stripImages apply to every batch.", {
     urls: z
         .array(z.string().url())
         .min(1)
-        .max(10)
-        .describe("1–10 fully-qualified http(s) URLs to read."),
+        .max(READ_URLS_MAX)
+        .describe("1–50 fully-qualified http(s) URLs. Lists longer than 10 are sent as parallel batches of 10 to /api/t/read/batch (card) or /api/v1/read/batch (wallet)."),
     stripLinks: z
         .boolean()
         .optional()
@@ -317,25 +318,18 @@ server.tool("read_urls", "Read up to 10 URLs in one Skim call and return per-URL
         return authMissing();
     try {
         const path = cardLane ? "/api/t/read/batch" : "/api/v1/read/batch";
-        const res = await skimFetch("POST", path, {
-            body: {
-                urls,
-                ...(stripLinks !== undefined ? { stripLinks } : {}),
-                ...(stripImages !== undefined ? { stripImages } : {}),
-            },
+        const items = await readUrlsInBatches(urls, async (chunk) => {
+            const res = await skimFetch("POST", path, {
+                body: {
+                    urls: chunk,
+                    ...(stripLinks !== undefined ? { stripLinks } : {}),
+                    ...(stripImages !== undefined ? { stripImages } : {}),
+                },
+            });
+            const data = (await readJson(res));
+            return data.results ?? [];
         });
-        const data = (await readJson(res));
-        const blocks = (data.results ?? []).map((item) => {
-            if (item.ok && item.data) {
-                return `## ${item.url}\n\n${formatRead(item.data)}`;
-            }
-            const err = item.error;
-            const detail = err
-                ? `${err.status ?? ""} ${err.message ?? ""}`.trim()
-                : "unknown error";
-            return `## ${item.url}\n\nERROR: ${detail}`;
-        });
-        return ok(blocks.join("\n\n---\n\n") || JSON.stringify(data, null, 2));
+        return ok(formatBatchMarkdown(items, formatRead) || "No results.");
     }
     catch (err) {
         return fail(requestFailedMessage(err));

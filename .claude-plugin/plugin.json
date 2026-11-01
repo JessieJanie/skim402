@@ -1,7 +1,7 @@
 {
   "name": "skim",
   "displayName": "Skim — Clean Web Reader",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Read public pages and PDFs, extract data, crawl sites, create page watches, and read Signals through skim402.com. Sends requested URLs and options to Skim and consumes your plan credits. Bundled local server; API key required; no wallet access.",
   "author": { "name": "JessieJanie" },
   "homepage": "https://skim402.com",

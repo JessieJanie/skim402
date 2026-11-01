@@ -41,7 +41,7 @@ logging or storage.
 | Tool | Submitted data / behavior | Plan credits |
 | --- | --- | --- |
 | `read_url` | Public URL; clean Markdown, automatic browser recovery when needed | 1 basic / 2 recovered |
-| `read_urls` | 1–10 public URLs and formatting flags | Per successful URL, as above |
+| `read_urls` | 1–50 public URLs and formatting flags. Lists over 10 are sent as parallel batches of 10 to POST /api/t/read/batch | Per successful URL, as above |
 | `extract_url` | Public URL, schema or preset, optional extraction instructions | 8 |
 | `crawl_url` | Site URL, page cap (1–25), formatting flags; fetches linked pages | 1 per successful page |
 | `read_pdf` | Public PDF URL, outline preference | 3 |

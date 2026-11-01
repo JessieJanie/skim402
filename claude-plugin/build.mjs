@@ -27,7 +27,9 @@ const input = entry.replace(/^#!.*\n/, "").replace(
   "server.connect(transport).catch(() => { process.stderr.write('MCP startup failed.\\n'); process.exitCode = 1; });",
 );
 const result = await build({
-  stdin: { contents: input, resolveDir: here, sourcefile: "src/index.ts", loader: "ts" },
+  // resolveDir is the real source directory so relative imports (./ and ../)
+  // match the file on disk. stdin otherwise resolves against this folder.
+  stdin: { contents: input, resolveDir: resolve(here, "src"), sourcefile: "index.ts", loader: "ts" },
   nodePaths: [modules],
   bundle: true,
   platform: "node",

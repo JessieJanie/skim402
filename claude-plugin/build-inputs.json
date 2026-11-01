@@ -213,6 +213,7 @@
     "node_modules/@modelcontextprotocol/sdk/dist/esm/server/mcp.js",
     "node_modules/@modelcontextprotocol/sdk/dist/esm/shared/stdio.js",
     "node_modules/@modelcontextprotocol/sdk/dist/esm/server/stdio.js",
-    "integrations/claude-plugin-skim/claude-plugin/src/index.ts"
+    "../src/readBatch.ts",
+    "src/index.ts"
   ]
 }
