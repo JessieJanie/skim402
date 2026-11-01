@@ -118,7 +118,7 @@ curl -i -X POST https://skim402.com/api/v1/read \
 
 ### `read_url`
 
-Reads any URL and returns clean Markdown with a YAML frontmatter block.
+Reads one URL and returns clean Markdown with a YAML frontmatter block. For two or more pages, use `read_urls` so the pages are batched together.
 
 **Input:** `{ "url": "https://example.com/article" }`
 
@@ -142,7 +142,7 @@ The cleaned article body in Markdown...
 
 ### `read_urls`
 
-Batch-read 1–10 URLs in one call. Optional `stripLinks` / `stripImages`.
+Batch-read 1–50 URLs and return them in input order. Prefer this over repeated `read_url` calls. Skim accepts 10 URLs per request (`POST /api/t/read/batch` or `POST /api/v1/read/batch`); longer lists are split into batches of 10, with up to 3 batches running at the same time. Optional `stripLinks` / `stripImages`.
 
 **Input:** `{ "urls": ["https://a.example", "https://b.example"] }`
 

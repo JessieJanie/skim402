@@ -6,7 +6,7 @@
     "url": "https://github.com/JessieJanie/skim402.git",
     "source": "github"
   },
-  "version": "0.2.5",
+  "version": "0.2.6",
   "websiteUrl": "https://skim402.com",
   "remotes": [
     {
@@ -26,7 +26,7 @@
     {
       "registryType": "npm",
       "identifier": "skim-mcp",
-      "version": "0.2.5",
+      "version": "0.2.6",
       "runtimeHint": "npx",
       "transport": {
         "type": "stdio"

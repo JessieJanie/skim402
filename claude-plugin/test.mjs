@@ -17,8 +17,19 @@ async function session(key, run) {
 import { appendFileSync } from 'node:fs';
 globalThis.fetch = async (url, options) => {
   appendFileSync(${JSON.stringify(capture)}, JSON.stringify({url, ...options, signal: !!options.signal})+'\\n');
-  if (url.includes('network-error')) throw new Error('injected error sk402_test_only');
-  if (url.includes('denied')) return new Response('private error text', {status:401});
+  const href = String(url);
+  if (href.includes('network-error')) throw new Error('injected error sk402_test_only');
+  if (href.includes('denied')) return new Response('private error text', {status:401});
+  if (href.includes('/api/t/read/batch')) {
+    const parsed = JSON.parse(typeof options.body === 'string' ? options.body : '{}');
+    const batchUrls = Array.isArray(parsed.urls) ? parsed.urls.map(String) : [];
+    if (batchUrls.some((entry) => entry.includes('batch-fail'))) {
+      throw new Error('injected batch failure');
+    }
+    return new Response(JSON.stringify({
+      results: batchUrls.map((entry) => ({ url: entry, ok: true, data: { markdown: 'PAGE ' + entry } })),
+    }), {status:200});
+  }
   return new Response(JSON.stringify({markdown:'# Test content', results:[], watch_id:'w_test', items:[]}), {status:200});
 };`);
   const child = spawn(process.execPath, ["--import", preload, server], {
@@ -90,6 +101,11 @@ test("no startup requests, no wallet fallback, all missing-key calls fail locall
   await session("", async (request, calls) => {
     const list = await request("tools/list");
     assert.equal(list.result.tools.length, 8);
+    const byName = Object.fromEntries(list.result.tools.map((entry) => [entry.name, entry.description]));
+    assert.match(byName.read_url, /read_urls/);
+    assert.match(byName.read_url, /two or more URLs/);
+    assert.match(byName.read_urls, /batches of 10/);
+    assert.match(byName.read_urls, /\/api\/t\/read\/batch/);
     for (const entry of list.result.tools) {
       assert.ok(entry.annotations.title);
       assert.equal(entry.annotations.readOnlyHint, false);
@@ -138,7 +154,7 @@ test("all tool routes are card-only, scoped, bounded and use one authenticated r
     for (const bad of [
       ["read_url", {url:"file:///etc/passwd"}],
       ["read_url", {url:"https://user:password@example.com"}],
-      ["read_urls", {urls:Array(11).fill("https://example.com")}],
+      ["read_urls", {urls:Array(51).fill("https://example.com")}],
       ["crawl_url", {url:"https://example.com",maxPages:26}],
       ["extract_url", {url:"https://example.com"}],
       ["poll_signal", {slug:"../../billing"}],
@@ -172,4 +188,69 @@ test("manifest points only at a bundled local server and declares its secret inp
   const source = await readFile(new URL("./src/index.ts", import.meta.url), "utf8");
   assert.deepEqual([...source.matchAll(/process\.env\.([A-Z_]+)/g)].map(m => m[1]), ["SKIM_API_KEY"]);
   assert.ok(!/child_process|readFile|writeFile|viem|x402-fetch|eval\(/.test(source));
+});
+
+test("read_urls posts 25 urls as 3 ordered batches of 10 against /api/t/read/batch", async () => {
+  await session("sk402_test_only", async (request, calls) => {
+    const urls = Array.from({ length: 25 }, (_, i) => `https://example.com/p/${i}`);
+    const response = await tool(request, "read_urls", { urls, stripLinks: true });
+    assert.equal(response.result?.isError, undefined);
+    const requests = await calls();
+    assert.equal(requests.length, 3);
+    const bodies = requests.map((sent) => JSON.parse(sent.body));
+    assert.deepEqual(bodies.map((body) => body.urls.length), [10, 10, 5]);
+    assert.deepEqual(bodies.flatMap((body) => body.urls), urls);
+    for (const sent of requests) {
+      const url = new URL(sent.url);
+      assert.equal(url.origin, "https://skim402.com");
+      assert.equal(url.pathname, "/api/t/read/batch");
+      assert.equal(sent.method, "POST");
+      assert.equal(JSON.parse(sent.body).stripLinks, true);
+      assert.equal(sent.headers.Authorization, "Bearer sk402_test_only");
+    }
+    const text = response.result.content[0].text;
+    let cursor = -1;
+    for (const href of urls) {
+      const at = text.indexOf(`## ${href}\n\nPAGE ${href}`);
+      assert.ok(at > cursor, href);
+      cursor = at;
+    }
+  });
+});
+
+test("read_urls keeps successful chunks when one batch fails", async () => {
+  await session("sk402_test_only", async (request, calls) => {
+    const urls = Array.from({ length: 25 }, (_, i) => `https://example.com/p/${i}`);
+    urls[14] = "https://example.com/batch-fail";
+    const response = await tool(request, "read_urls", { urls });
+    assert.notEqual(response.result?.isError, true);
+    const requests = await calls();
+    assert.equal(requests.length, 3);
+    const text = response.result.content[0].text;
+    const at = (needle) => {
+      const index = text.indexOf(needle);
+      assert.ok(index !== -1, needle);
+      return index;
+    };
+    const i0 = at("## https://example.com/p/0\n\nPAGE https://example.com/p/0");
+    const i9 = at("## https://example.com/p/9\n\nPAGE https://example.com/p/9");
+    const i10 = at("## https://example.com/p/10\n\nERROR: injected batch failure");
+    const iFail = at("## https://example.com/batch-fail\n\nERROR: injected batch failure");
+    const i19 = at("## https://example.com/p/19\n\nERROR: injected batch failure");
+    const i20 = at("## https://example.com/p/20\n\nPAGE https://example.com/p/20");
+    const i24 = at("## https://example.com/p/24\n\nPAGE https://example.com/p/24");
+    assert.ok(i0 < i9 && i9 < i10 && i10 < iFail && iFail < i19 && i19 < i20 && i20 < i24);
+  });
+});
+
+test("a single read_urls batch failure stays a tool error", async () => {
+  await session("sk402_test_only", async (request, calls) => {
+    const response = await tool(request, "read_urls", {
+      urls: ["https://example.com/batch-fail"],
+    });
+    assert.equal(response.result.isError, true);
+    assert.match(response.result.content[0].text, /injected batch failure/);
+    assert.equal((await calls()).length, 1);
+    assert.ok(!JSON.stringify(response).includes("sk402_test_only"));
+  });
 });
