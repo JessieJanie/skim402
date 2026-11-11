@@ -9,7 +9,20 @@ import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 
 const server = fileURLToPath(new URL("./src/server.mjs", import.meta.url));
-async function session(key, run) {
+// Ship only explicit placeholders, never complete credential-shaped fixtures.
+// Derive the public format prefix from the real validator so authentication
+// exercises the unchanged production gate, not a test bypass. These synthetic
+// values exist only during intercepted tests; they cannot authorize live calls.
+const toolsSource = await readFile(new URL("./src/tools.mjs", import.meta.url), "utf8");
+const cardKeyPrefix = toolsSource.match(/const hasAuth = \/\^([a-z0-9]+_)\[/)?.[1];
+assert.ok(cardKeyPrefix, "Review test fixtures if the production card-key format changes.");
+function configuredTestKey(placeholder) {
+  if (!placeholder) return "";
+  assert.match(placeholder, /^YOUR_[A-Z_]+$/);
+  return cardKeyPrefix + placeholder;
+}
+async function session(placeholder, run) {
+  const key = configuredTestKey(placeholder);
   const dir = await mkdtemp(join(tmpdir(), "skim-plugin-test-"));
   const capture = join(dir, "requests.jsonl");
   const preload = join(dir, "mock.mjs");
@@ -17,17 +30,17 @@ async function session(key, run) {
 import { appendFileSync } from 'node:fs';
 globalThis.fetch = async (url, options) => {
   appendFileSync(${JSON.stringify(capture)}, JSON.stringify({url, ...options, signal: !!options.signal})+'\\n');
-  if (url.includes('network-error')) throw new Error('injected error sk402_test_only');
+  if (url.includes('network-error')) throw new Error('injected error ' + options.headers.Authorization.slice('Bearer '.length));
   if (url.includes('denied')) return new Response('private error text', {status:401});
-  return new Response(JSON.stringify({markdown:'# Test content', results:[], watch_id:'w_test', items:[]}), {status:200});
+  return new Response(JSON.stringify({markdown:'# Test content', results:[], watch_id:'YOUR_WATCH_ID', items:[]}), {status:200});
 };`);
   const child = spawn(process.execPath, ["--import", preload, server], {
     env: {
       PATH: process.env.PATH,
       SKIM_PLUGIN_CONFIGURED_API_KEY: key,
       // These MUST have no influence over the plugin's destination or auth.
-      SKIM_API_KEY: "sk402_unrelated_machine_key",
-      SKIM_WALLET_PRIVATE_KEY: "1".repeat(64),
+      SKIM_API_KEY: configuredTestKey("YOUR_MACHINE_API_KEY"),
+      SKIM_WALLET_PRIVATE_KEY: "YOUR_WALLET_PRIVATE_KEY",
       SKIM_API_URL: "https://attacker.invalid",
     },
     stdio: ["pipe", "pipe", "pipe"],
@@ -63,7 +76,7 @@ globalThis.fetch = async (url, options) => {
       try { return (await readFile(capture, "utf8")).trim().split("\n").filter(Boolean).map(JSON.parse); }
       catch (error) { if (error.code === "ENOENT") return []; throw error; }
     };
-    await run(request, calls);
+    await run(request, calls, key);
     assert.ok(!stderr.includes(key) || !key, "key must not be logged");
   } finally {
     const exited = once(child, "exit");
@@ -81,8 +94,8 @@ const cases = [
   ["crawl_url", {url:"https://example.com",maxPages:2}, "POST", "/api/t/crawl"],
   ["read_pdf", {url:"https://example.com/file.pdf"}, "POST", "/api/t/read-pdf"],
   ["watch_urls", {urls:["https://example.com"],note:"User requested"}, "POST", "/api/t/watch"],
-  ["check_watch", {watch_id:"w_test"}, "GET", "/api/t/watch/diff"],
-  ["check_watch", {watch_id:"w_test",status_only:true}, "GET", "/api/t/watch/status"],
+  ["check_watch", {watch_id:"YOUR_WATCH_ID"}, "GET", "/api/t/watch/diff"],
+  ["check_watch", {watch_id:"YOUR_WATCH_ID",status_only:true}, "GET", "/api/t/watch/status"],
   ["poll_signal", {slug:"sec-filings",forms:"10-K",limit:2}, "GET", "/api/t/signal/sec-filings/latest"],
   ["poll_signal", {slug:"x402"}, "GET", "/api/t/feeds/x402/latest"],
 ];
@@ -107,7 +120,7 @@ test("no startup requests, no wallet fallback, all missing-key calls fail locall
 });
 
 test("all tool routes are card-only, scoped, bounded and use one authenticated request", async () => {
-  await session("sk402_test_only", async (request, calls) => {
+  await session("YOUR_API_KEY", async (request, calls, configuredKey) => {
     assert.deepEqual(await calls(), []);
     for (const [name, args, method, path] of cases) {
       const before = (await calls()).length;
@@ -122,7 +135,7 @@ test("all tool routes are card-only, scoped, bounded and use one authenticated r
       assert.equal(sent.method, method);
       assert.equal(sent.redirect, "error");
       assert.equal(sent.signal, true);
-      assert.equal(sent.headers.Authorization, "Bearer sk402_test_only");
+      assert.equal(sent.headers.Authorization, `Bearer ${configuredKey}`);
       if (method === "POST") {
         const body = JSON.parse(sent.body);
         for (const [key, value] of Object.entries(args)) {
@@ -138,7 +151,7 @@ test("all tool routes are card-only, scoped, bounded and use one authenticated r
     const count = (await calls()).length;
     for (const bad of [
       ["read_url", {url:"file:///etc/passwd"}],
-      ["read_url", {url:"https://user:password@example.com"}],
+      ["read_url", {url:"https://YOUR_USERNAME:YOUR_PASSWORD@example.com"}],
       ["read_urls", {urls:Array(11).fill("https://example.com")}],
       ["crawl_url", {url:"https://example.com",maxPages:26}],
       ["extract_url", {url:"https://example.com"}],
@@ -151,7 +164,7 @@ test("all tool routes are card-only, scoped, bounded and use one authenticated r
     for (const suffix of ["denied", "network-error"]) {
       const response = await tool(request, "read_url", {url:`https://example.com/${suffix}`});
       assert.equal(response.result.isError, true);
-      assert.ok(!JSON.stringify(response).includes("sk402_test_only"));
+      assert.ok(!JSON.stringify(response).includes(configuredKey));
       assert.ok(!JSON.stringify(response).includes("private error text"));
     }
     assert.equal((await calls()).length, count + 2, "no automatic retries");
@@ -191,6 +204,10 @@ test("directory guard rejects oversized code and inherited credential regression
     await writeFile(extra, " ".repeat(256 * 1024));
     await assert.rejects(checkPlugin(copy), /exceeds the review threshold/);
     await rm(extra);
+    const credentialFixture = join(copy, "credential-fixture.txt");
+    await writeFile(credentialFixture, configuredTestKey("YOUR_API_KEY"));
+    await assert.rejects(checkPlugin(copy), /credential-like value/);
+    await rm(credentialFixture);
     const readme = join(copy, "README.md");
     const original = await readFile(readme, "utf8");
     await writeFile(readme, original + '\nDo not use this regression fixture: $SKIM_API_KEY\n');
@@ -205,7 +222,7 @@ test("directory guard rejects oversized code and inherited credential regression
 });
 
 test("MCP ping, unknown requests, validation and empty-schema precedence", async () => {
-  await session("sk402_test_only", async (request, calls) => {
+  await session("YOUR_API_KEY", async (request, calls) => {
     assert.deepEqual((await request("ping")).result, {});
     assert.equal((await request("does/not/exist")).error.code, -32601);
     assert.equal((await tool(request, "not-a-tool", {})).error.code, -32602);

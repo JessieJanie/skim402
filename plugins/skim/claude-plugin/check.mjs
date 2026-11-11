@@ -69,6 +69,24 @@ export async function checkPlugin(root = defaultRoot) {
       const exempt = [".png", ".jpg", ".jpeg", ".gif", ".webp", ".woff", ".woff2", ".ttf", ".otf"].includes(extname(file).toLowerCase());
       assert(exempt || bytes.length < 256 * 1024, `${relative(root, file)} exceeds the review threshold.`);
       assert(exempt || !bytes.includes(0), `${relative(root, file)} is not readable text.`);
+      if (!exempt) {
+        const source = bytes.toString("utf8");
+        // Also scan tests and docs: synthetic values can still block the portal.
+        // Format descriptions/validators are fine; complete key-shaped values are not.
+        const credentialPatterns = [
+          /\b(?:sk402_|sk_live_|sk_test_|ghp_|github_pat_|sk-ant-)[A-Za-z0-9_-]+\b/,
+          /\b(?:0x)?[a-fA-F0-9]{64}\b/,
+          /-----BEGIN (?:[A-Z]+ )?PRIVATE KEY-----/,
+          /\b(?:AKIA|ASIA)[A-Z0-9]{16}\b/,
+          /\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/,
+        ];
+        assert(!credentialPatterns.some((pattern) => pattern.test(source)),
+          `${relative(root, file)} contains a credential-like value; use YOUR_API_KEY or another explicit placeholder.`);
+        for (const match of source.matchAll(/(["'])([a-fA-F0-9]+)\1\s*\.repeat\(\s*(\d+)\s*\)/g)) {
+          assert(match[2].length * Number(match[3]) < 64,
+            `${relative(root, file)} constructs credential-like wallet material; use an explicit placeholder.`);
+        }
+      }
       if (item.name === ".gitattributes") {
         assert(!/\b(?:export-ignore|export-subst|filter)\b/.test(bytes.toString()), "Git attributes must not rewrite files.");
       }
