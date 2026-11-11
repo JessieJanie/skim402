@@ -2,13 +2,13 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 
-const server = fileURLToPath(new URL("./server.cjs", import.meta.url));
+const server = fileURLToPath(new URL("./src/server.mjs", import.meta.url));
 async function session(key, run) {
   const dir = await mkdtemp(join(tmpdir(), "skim-plugin-test-"));
   const capture = join(dir, "requests.jsonl");
@@ -24,8 +24,9 @@ globalThis.fetch = async (url, options) => {
   const child = spawn(process.execPath, ["--import", preload, server], {
     env: {
       PATH: process.env.PATH,
-      SKIM_API_KEY: key,
+      SKIM_PLUGIN_CONFIGURED_API_KEY: key,
       // These MUST have no influence over the plugin's destination or auth.
+      SKIM_API_KEY: "sk402_unrelated_machine_key",
       SKIM_WALLET_PRIVATE_KEY: "1".repeat(64),
       SKIM_API_URL: "https://attacker.invalid",
     },
@@ -157,7 +158,7 @@ test("all tool routes are card-only, scoped, bounded and use one authenticated r
   });
 });
 
-test("manifest points only at a bundled local server and declares its secret input", async () => {
+test("manifest points only at readable source and declares its explicit secret input", async () => {
   const root = new URL("../", import.meta.url);
   const manifest = JSON.parse(await readFile(new URL(".claude-plugin/plugin.json", root), "utf8"));
   const config = JSON.parse(await readFile(new URL(".mcp.json", root), "utf8"));
@@ -166,10 +167,64 @@ test("manifest points only at a bundled local server and declares its secret inp
   assert.equal(manifest.userConfig.skim_api_key.required, true);
   assert.deepEqual(Object.keys(config.mcpServers), ["skim"]);
   assert.equal(config.mcpServers.skim.command, "node");
-  assert.deepEqual(config.mcpServers.skim.args, ["${CLAUDE_PLUGIN_ROOT}/claude-plugin/server.cjs"]);
-  assert.deepEqual(config.mcpServers.skim.env, {SKIM_API_KEY:"${user_config.skim_api_key}"});
+  assert.deepEqual(config.mcpServers.skim.args, ["${CLAUDE_PLUGIN_ROOT}/claude-plugin/src/server.mjs"]);
+  assert.deepEqual(config.mcpServers.skim.env, {SKIM_PLUGIN_CONFIGURED_API_KEY:"${user_config.skim_api_key}"});
   for (const key of ["hooks","settings","commands","agents"]) assert.equal(manifest[key], undefined);
-  const source = await readFile(new URL("./src/index.ts", import.meta.url), "utf8");
-  assert.deepEqual([...source.matchAll(/process\.env\.([A-Z_]+)/g)].map(m => m[1]), ["SKIM_API_KEY"]);
+  const source = await readFile(new URL("./src/server.mjs", import.meta.url), "utf8");
+  assert.deepEqual([...source.matchAll(/process\.env\.([A-Z_]+)/g)].map(m => m[1]), ["SKIM_PLUGIN_CONFIGURED_API_KEY"]);
   assert.ok(!/child_process|readFile|writeFile|viem|x402-fetch|eval\(/.test(source));
+});
+
+test("directory file, credential, manifest and rebuild checks stay enforced", async () => {
+  const { checkPlugin } = await import("./check.mjs");
+  const checked = await checkPlugin();
+  assert.equal(checked.runtimeModules, 3);
+});
+
+test("directory guard rejects oversized code and inherited credential regressions", async () => {
+  const { checkPlugin } = await import("./check.mjs");
+  const temporary = await mkdtemp(join(tmpdir(), "skim-plugin-policy-"));
+  const copy = join(temporary, "plugin");
+  try {
+    await cp(fileURLToPath(new URL("../", import.meta.url)), copy, {recursive:true});
+    const extra = join(copy, "oversized.js");
+    await writeFile(extra, " ".repeat(256 * 1024));
+    await assert.rejects(checkPlugin(copy), /exceeds the review threshold/);
+    await rm(extra);
+    const readme = join(copy, "README.md");
+    const original = await readFile(readme, "utf8");
+    await writeFile(readme, original + '\nDo not use this regression fixture: $SKIM_API_KEY\n');
+    await assert.rejects(checkPlugin(copy), /inherited credential/);
+    await writeFile(readme, original);
+    const entry = join(copy, "claude-plugin/src/server.mjs");
+    await writeFile(entry, (await readFile(entry, "utf8")) + '\nvoid process.env.SKIM_API_KEY;\n');
+    await assert.rejects(checkPlugin(copy), /explicit plugin-configured input/);
+  } finally {
+    await rm(temporary, {recursive:true,force:true});
+  }
+});
+
+test("MCP ping, unknown requests, validation and empty-schema precedence", async () => {
+  await session("sk402_test_only", async (request, calls) => {
+    assert.deepEqual((await request("ping")).result, {});
+    assert.equal((await request("does/not/exist")).error.code, -32601);
+    assert.equal((await tool(request, "not-a-tool", {})).error.code, -32602);
+    for (const [name, args] of [
+      ["read_url", {}], ["read_url", {url:"https://example.com",secret:"do-not-forward"}],
+      ["read_url", JSON.parse('{"url":"https://example.com","__proto__":{"secret":"do-not-forward"}}')],
+      ["read_url", {url:"https://example.com",constructor:"do-not-forward"}],
+      ["read_urls", {urls:[]}], ["read_urls", {urls:["https://example.com"],stripLinks:"true"}],
+      ["watch_urls", {urls:Array(21).fill("https://example.com")}],
+      ["check_watch", {watch_id:""}], ["crawl_url", {url:"https://example.com",maxPages:1.5}],
+      ["poll_signal", {slug:"macro",limit:101}],
+    ]) {
+      assert.equal((await tool(request, name, args)).error.code, -32602);
+    }
+    assert.deepEqual(await calls(), []);
+    const response = await tool(request, "extract_url", {
+      url:"https://example.com",schema:{},preset:"product",
+    });
+    assert.ok(!response.error && !response.result.isError);
+    assert.deepEqual(JSON.parse((await calls()).at(-1).body).schema,{});
+  });
 });
